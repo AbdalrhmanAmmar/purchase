@@ -47,37 +47,44 @@ export function OrderDetail() {
   const navigate = useNavigate()
 
   useEffect(() => {
-    const fetchOrderData = async () => {
-      if (!id) return
+  console.log('Purchase orders state:', purchaseOrders);
+}, [purchaseOrders]);
 
-      try {
-        console.log('Fetching order details...')
-        const [orderResponse, purchaseOrdersResponse, invoicesResponse, shippingResponse] = await Promise.all([
-          getOrderById(id) as Promise<{ order: Order }>,
-          getPurchaseOrdersByOrderId(id) as Promise<{ purchaseOrders: PurchaseOrder[] }>,
-          getInvoicesByOrderId(id) as Promise<{ invoices: Invoice[] }>,
-          getShippingInvoicesByOrderId(id) as Promise<{ shippingInvoices: ShippingInvoice[] }>
-        ])
+useEffect(() => {
+  const fetchOrderData = async () => {
+    if (!id) return;
 
-        setOrder(orderResponse.order)
-        setPurchaseOrders(purchaseOrdersResponse.purchaseOrders || [])
-        setInvoices(invoicesResponse.invoices || [])
-        setShippingInvoices(shippingResponse.shippingInvoices || [])
-        console.log('Order details loaded successfully')
-      } catch (error) {
-        console.error('Error fetching order details:', error)
-        toast({
-          title: "Error",
-          description: "Failed to load order details",
-          variant: "destructive",
-        })
-      } finally {
-        setLoading(false)
-      }
+    try {
+      console.log('Fetching order details...');
+      const [orderResponse, purchaseOrdersResponse, invoicesResponse, shippingResponse] = await Promise.all([
+        getOrderById(id),
+        getPurchaseOrdersByOrderId(id),
+        getInvoicesByOrderId(id),
+        getShippingInvoicesByOrderId(id)
+      ]);
+
+      console.log('Purchase Orders Response:', purchaseOrdersResponse); // << هنا
+      
+      setOrder(orderResponse.order);
+      setPurchaseOrders(
+  Array.isArray(purchaseOrdersResponse.purchaseOrders) 
+    ? purchaseOrdersResponse.purchaseOrders 
+    : [purchaseOrdersResponse.purchaseOrders] || []
+);
+      setInvoices(invoicesResponse.invoices || []);
+      setShippingInvoices(shippingResponse.shippingInvoices || []);
+    } catch (error) {
+      console.error('Error fetching order details:', error);
+      toast({ title: "Error", description: "Failed to load order details", variant: "destructive" });
+    } finally {
+      setLoading(false);
     }
+  };
 
-    fetchOrderData()
-  }, [id, toast])
+  fetchOrderData();
+}, [id, toast]);
+
+
 
   const getStatusBadge = (status: string) => {
     const variants = {
@@ -307,68 +314,66 @@ export function OrderDetail() {
               </div>
             </CardHeader>
             <CardContent>
-              {purchaseOrders.length > 0 ? (
-                <div className="space-y-4">
-                  {purchaseOrders.map((po) => (
-                    <Card key={po._id} className="border border-slate-200">
-                      <CardHeader>
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <CardTitle className="text-lg">PO #{po._id}</CardTitle>
-                            <CardDescription>{po.supplierName}</CardDescription>
-                          </div>
-                          <div className="text-right">
-                            <p className="text-lg font-semibold">${po.totalAmount.toFixed(2)}</p>
-                            <Badge className={getStatusBadge(po.status)}>
-                              {po.status}
-                            </Badge>
-                          </div>
-                        </div>
-                      </CardHeader>
-                      <CardContent>
-                        <Table>
-                          <TableHeader>
-                            <TableRow>
-                              <TableHead className="w-20">Photo</TableHead>
-                              <TableHead>Description</TableHead>
-                              <TableHead className="w-24">Qty</TableHead>
-                              <TableHead className="w-32">Unit Price</TableHead>
-                              <TableHead className="w-32">Total</TableHead>
-                            </TableRow>
-                          </TableHeader>
-                          <TableBody>
-                            {po.items.map((item, index) => (
-                              <TableRow key={index}>
-                                <TableCell>
-                                  <ImagePlaceholder
-                                    src={item.photo}
-                                    alt="Product"
-                                    className="w-16 h-16 rounded"
-                                    fallbackText="Product"
-                                  />
-                                </TableCell>
-                                <TableCell>{item.description}</TableCell>
-                                <TableCell>{item.quantity}</TableCell>
-                                <TableCell>${item.unitPrice.toFixed(2)}</TableCell>
-                                <TableCell>${item.total.toFixed(2)}</TableCell>
-                              </TableRow>
-                            ))}
-                          </TableBody>
-                        </Table>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
-              ) : (
-                <div className="text-center py-8">
-                  <ShoppingCart className="w-12 h-12 text-slate-400 mx-auto mb-4" />
-                  <p className="text-slate-600 mb-4">No purchase orders created yet.</p>
-                  <Button onClick={() => navigate(`/orders/${id}/purchase-order`)}>
-                    <Plus className="w-4 h-4 mr-2" />
-                    Create Purchase Order
-                  </Button>
-                </div>
-              )}
+            {purchaseOrders.length > 0 ? (
+  purchaseOrders.map((po) => (
+    <Card key={po._id} className="border border-slate-200">
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <div>
+            <CardTitle className="text-lg">PO #{po._id}</CardTitle>
+            <CardDescription>{po.supplierName}</CardDescription>
+          </div>
+          <div className="text-right">
+            <p className="text-lg font-semibold">${po.totalAmount?.toFixed(2)}</p>
+            <Badge className={getStatusBadge(po.status)}>
+              {po.status}
+            </Badge>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead className="w-20">Photo</TableHead>
+              <TableHead>Description</TableHead>
+              <TableHead className="w-24">Qty</TableHead>
+              <TableHead className="w-32">Unit Price</TableHead>
+              <TableHead className="w-32">Total</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {po.items?.map((item, index) => (
+              <TableRow key={index}>
+                <TableCell>
+                  <ImagePlaceholder
+                    src={item.photo}
+                    alt="Product"
+                    className="w-16 h-16 rounded"
+                    fallbackText="Product"
+                  />
+                </TableCell>
+                <TableCell>{item.description}</TableCell>
+                <TableCell>{item.quantity}</TableCell>
+                <TableCell>${item.unitPrice?.toFixed(2)}</TableCell>
+                <TableCell>${item.total?.toFixed(2)}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </CardContent>
+    </Card>
+  ))
+) : (
+  <div className="text-center py-8">
+    <ShoppingCart className="w-12 h-12 text-slate-400 mx-auto mb-4" />
+    <p className="text-slate-600 mb-4">No purchase orders created yet.</p>
+    <Button onClick={() => navigate(`/orders/${id}/purchase-order`)}>
+      <Plus className="w-4 h-4 mr-2" />
+      Create Purchase Order
+    </Button>
+  </div>
+)}
             </CardContent>
           </Card>
         </TabsContent>

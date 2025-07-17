@@ -69,9 +69,34 @@ export interface CreatePurchaseOrderPaymentData {
 export const getPurchaseOrdersByOrderId = async (orderId: string) => {
   try {
     const response = await api.get(`/api/orders/${orderId}/purchase-orders`);
-    return response.data;
+    
+    console.log('Raw API Response:', response); // لفحص هيكل البيانات الكامل
+    
+    // الحل الأكثر أماناً للتعامل مع مختلف هياكل البيانات
+    let purchaseOrders = [];
+    
+    if (Array.isArray(response.data)) {
+      // إذا كانت البيانات مصفوفة مباشرة
+      purchaseOrders = response.data;
+    } else if (response.data.data && Array.isArray(response.data.data)) {
+      // إذا كانت البيانات داخل خاصية data
+      purchaseOrders = response.data.data;
+    } else if (response.data.purchaseOrders && Array.isArray(response.data.purchaseOrders)) {
+      // إذا كانت البيانات داخل خاصية purchaseOrders
+      purchaseOrders = response.data.purchaseOrders;
+    } else if (response.data) {
+      // إذا كانت البيانات كائن مفرد (نحوله لمصفوفة)
+      purchaseOrders = [response.data];
+    }
+    
+    return { 
+      success: true,
+      purchaseOrders: purchaseOrders || [] // تأكد من عدم إرجاع undefined
+    };
+    
   } catch (error: any) {
-    throw new Error(error?.response?.data?.message || error.message);
+    console.error('Error fetching purchase orders:', error);
+    throw new Error(error?.response?.data?.message || error.message || 'Failed to fetch purchase orders');
   }
 };
 
@@ -105,14 +130,7 @@ export const getPurchaseOrders = async (filters: {
 // Endpoint: GET /api/purchase-orders/:id
 // Request: {}
 // Response: { success: boolean, data: { purchaseOrder: PurchaseOrder } }
-export const getPurchaseOrderById = async (purchaseOrderId: string) => {
-  try {
-    const response = await api.get(`/api/purchase-orders/${purchaseOrderId}`);
-    return response.data;
-  } catch (error: any) {
-    throw new Error(error?.response?.data?.message || error.message);
-  }
-};
+
 
 // Description: Create a new purchase order
 // Endpoint: POST /api/purchase-orders
@@ -120,12 +138,13 @@ export const getPurchaseOrderById = async (purchaseOrderId: string) => {
 // Response: { success: boolean, message: string, data: { purchaseOrder: PurchaseOrder } }
 export const createPurchaseOrder = async (data: CreatePurchaseOrderData) => {
   try {
-    return await api.post('/api/purchase-orders', data);
+    const response = await api.post('/api/purchase-orders', data);
+    return response.data;
   } catch (error: any) {
-    throw new Error(error?.response?.data?.message || error.message);
+    console.error('Error creating purchase order:', error.response?.data || error.message);
+    throw error;
   }
 };
-
 // Description: Update purchase order
 // Endpoint: PUT /api/purchase-orders/:id
 // Request: Partial<CreatePurchaseOrderData>

@@ -124,123 +124,131 @@ export function CreatePurchaseOrder() {
     }
   }
 
-  const onSubmit = async (data: CreatePurchaseOrderData, sendToSupplier = false) => {
-    // Add debugging logs
-    console.log('onSubmit called with selectedSupplier:', selectedSupplier);
-    console.log('onSubmit called with deliveryDate:', deliveryDate);
-    console.log('onSubmit called with loading state:', loading);
+const onSubmit = async (data: CreatePurchaseOrderData, sendToSupplier = false) => {
+  // التحقق من حالة التحميل ومنع إرسال متعدد
+  if (loading) {
+    console.log('Submission blocked - already loading');
+    return;
+  }
 
-    // Prevent multiple submissions
-    if (loading) {
-      console.log('Submission blocked - already loading');
-      return;
-    }
+  // التحقق من وجود المورد المختار
+  if (!selectedSupplier) {
+    console.log('Validation failed - no supplier selected');
+    toast({
+      title: "Error",
+      description: "Please select a supplier",
+      variant: "destructive",
+    });
+    return;
+  }
 
-    // Use a small delay to ensure state has been updated
-    await new Promise(resolve => setTimeout(resolve, 100));
-    
-    console.log('After delay - selectedSupplier:', selectedSupplier);
-    console.log('After delay - deliveryDate:', deliveryDate);
+  // التحقق من تاريخ التسليم
+  if (!deliveryDate) {
+    console.log('Validation failed - no delivery date selected');
+    toast({
+      title: "Error",
+      description: "Please select delivery date",
+      variant: "destructive",
+    });
+    return;
+  }
 
-    if (!selectedSupplier) {
-      console.log('Validation failed - no supplier selected');
-      toast({
-        title: "Error",
-        description: "Please select a supplier",
-        variant: "destructive",
-      })
-      return
-    }
-
-    if (!deliveryDate) {
-      console.log('Validation failed - no delivery date selected');
-      toast({
-        title: "Error",
-        description: "Please select delivery date",
-        variant: "destructive",
-      })
-      return
-    }
-
-    if (paymentData.makePayment && paymentData.amount <= 0) {
+  // التحقق من صحة مبلغ الدفع إذا كان هناك دفع
+  if (paymentData.makePayment) {
+    if (paymentData.amount <= 0) {
       console.log('Validation failed - invalid payment amount');
       toast({
         title: "Error",
         description: "Please enter a valid payment amount",
         variant: "destructive",
-      })
-      return
+      });
+      return;
     }
 
-    if (paymentData.makePayment && paymentData.amount > totalAmount) {
+    if (paymentData.amount > totalAmount) {
       console.log('Validation failed - payment amount exceeds total');
       toast({
         title: "Error",
         description: "Payment amount cannot exceed total order amount",
         variant: "destructive",
-      })
-      return
-    }
-
-    if (!id) {
-      console.log('Validation failed - no order ID');
+      });
       return;
     }
-
-    setLoading(true)
-    try {
-      console.log('Creating purchase order...')
-      console.log('Delivery date:', deliveryDate)
-      console.log('Selected supplier:', selectedSupplier)
-
-    const purchaseOrderData = {
-  ...data,
-  orderId: id,
-  supplierId: selectedSupplier,
-  supplierName: suppliers.find(s => s._id === selectedSupplier)?.supplierName || 'Unknown Supplier',
-  deliveryDate: deliveryDate.toISOString(),
-  totalAmount,
-  paidAmount: paymentData.makePayment ? paymentData.amount : 0,
-  payments: paymentData.makePayment ? [{
-    paymentType: paymentData.paymentType,
-    amount: paymentData.amount,
-    paymentMethod: paymentData.paymentMethod,
-    reference: paymentData.reference,
-    status: 'completed',
-    description: paymentData.description || `${paymentData.paymentType.replace('_', ' ')} payment for PO`,
-    paymentDate: new Date().toISOString()
-  }] : [],
-}
-
-
-      console.log('FORM: About to call createPurchaseOrder API with data:', JSON.stringify(purchaseOrderData, null, 2));
-      const apiResponse = await createPurchaseOrder(purchaseOrderData)
-      console.log('FORM: API response received:', JSON.stringify(apiResponse, null, 2));
-      console.log('FORM: Purchase order created successfully with ID:', apiResponse?.data?.purchaseOrder?._id);
-      
-      toast({
-        title: "Success",
-        description: paymentData.makePayment
-          ? `Purchase order created and ${paymentData.paymentType.replace('_', ' ')} payment of $${paymentData.amount} recorded`
-          : sendToSupplier ? "Purchase order created and sent to supplier" : "Purchase order saved successfully",
-      })
-      
-      console.log('FORM: About to navigate back to order detail page');
-      navigate(`/orders/${id}`)
-      console.log('FORM: Navigation completed');
-    } catch (error) {
-      console.error('FORM: Error creating purchase order:', error)
-      console.error('FORM: Error details:', error);
-      toast({
-        title: "Error",
-        description: "Failed to create purchase order",
-        variant: "destructive",
-      })
-    } finally {
-      setLoading(false)
-      console.log('FORM: Loading state set to false');
-    }
   }
+
+  // التحقق من وجود orderId
+  if (!id) {
+    console.log('Validation failed - no order ID');
+    toast({
+      title: "Error",
+      description: "Order ID is missing",
+      variant: "destructive",
+    });
+    return;
+  }
+
+  setLoading(true);
+
+  try {
+    // إعداد بيانات الطلب
+    const supplier = suppliers.find(s => s._id === selectedSupplier);
+    
+    const requestData: CreatePurchaseOrderData = {
+      ...data,
+      orderId: id,
+      supplierId: selectedSupplier,
+      supplierName: supplier?.supplierName || 'Unknown Supplier',
+      deliveryDate: deliveryDate.toISOString(),
+      totalAmount: totalAmount,
+      paidAmount: paymentData.makePayment ? paymentData.amount : 0,
+      payments: paymentData.makePayment ? [{
+        paymentType: paymentData.paymentType,
+        amount: paymentData.amount,
+        paymentMethod: paymentData.paymentMethod,
+        reference: paymentData.reference || undefined,
+        status: 'completed',
+        description: paymentData.description || 
+                   `${paymentData.paymentType.replace('_', ' ')} payment for PO`,
+        paymentDate: new Date().toISOString()
+      }] : undefined
+    };
+
+    console.log('Submitting purchase order data:', JSON.stringify(requestData, null, 2));
+
+    // إرسال الطلب إلى API
+    const response = await createPurchaseOrder(requestData);
+    console.log('API response:', response);
+
+    // عرض رسالة نجاح حسب الحالة
+    toast({
+      title: "Success",
+      description: paymentData.makePayment
+        ? `Purchase order created and ${paymentData.paymentType.replace('_', ' ')} payment of $${paymentData.amount} recorded`
+        : sendToSupplier 
+          ? "Purchase order created and sent to supplier" 
+          : "Purchase order saved successfully",
+    });
+
+    // التوجيه إلى صفحة الطلب
+    navigate(`/orders/${id}`);
+
+  } catch (error: any) {
+    console.error('Error creating purchase order:', error);
+    
+    // عرض رسالة خطأ مفصلة إذا توفرت
+    const errorMessage = error.response?.data?.message || 
+                       error.message || 
+                       "Failed to create purchase order";
+    
+    toast({
+      title: "Error",
+      description: errorMessage,
+      variant: "destructive",
+    });
+  } finally {
+    setLoading(false);
+  }
+};
 
   const PhotoUpload = ({ index }: { index: number }) => {
     const [photo, setPhoto] = useState<string>('')
