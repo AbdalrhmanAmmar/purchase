@@ -56,26 +56,38 @@ useEffect(() => {
 
     try {
       console.log('Fetching order details...');
-      const [orderResponse, purchaseOrdersResponse, invoicesResponse, shippingResponse] = await Promise.all([
+
+      const [
+        orderResponse,
+        purchaseOrdersResponse,
+        invoicesResponse,
+        shippingResponse
+      ] = await Promise.all([
         getOrderById(id),
         getPurchaseOrdersByOrderId(id),
         getInvoicesByOrderId(id),
         getShippingInvoicesByOrderId(id)
       ]);
 
-      console.log('Purchase Orders Response:', purchaseOrdersResponse); // << هنا
-      
-      setOrder(orderResponse.order);
-      setPurchaseOrders(
-  Array.isArray(purchaseOrdersResponse.purchaseOrders) 
-    ? purchaseOrdersResponse.purchaseOrders 
-    : [purchaseOrdersResponse.purchaseOrders] || []
-);
-      setInvoices(invoicesResponse.invoices || []);
-      setShippingInvoices(shippingResponse.shippingInvoices || []);
+      console.log('Purchase Orders Response:', purchaseOrdersResponse);
+
+      setOrder(orderResponse?.order || null);
+
+      // تأكد من أن purchaseOrdersResponse يحتوي على مصفوفة
+      const purchaseOrders = Array.isArray(purchaseOrdersResponse.purchaseOrders)
+        ? purchaseOrdersResponse.purchaseOrders
+        : [];
+
+      setPurchaseOrders(purchaseOrders);
+      setInvoices(invoicesResponse?.invoices || []);
+      setShippingInvoices(shippingResponse?.shippingInvoices || []);
     } catch (error) {
       console.error('Error fetching order details:', error);
-      toast({ title: "Error", description: "Failed to load order details", variant: "destructive" });
+      toast({
+        title: "خطأ",
+        description: "فشل في تحميل تفاصيل الطلب",
+        variant: "destructive",
+      });
     } finally {
       setLoading(false);
     }
@@ -83,6 +95,7 @@ useEffect(() => {
 
   fetchOrderData();
 }, [id, toast]);
+
 
 
 

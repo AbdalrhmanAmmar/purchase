@@ -72,20 +72,20 @@ export const getPurchaseOrdersByOrderId = async (orderId: string) => {
     
     console.log('Raw API Response:', response); // لفحص هيكل البيانات الكامل
     
-    // الحل الأكثر أماناً للتعامل مع مختلف هياكل البيانات
+    // استخراج البيانات بناءً على الهيكل الذي رأيناه في الكونسول
     let purchaseOrders = [];
     
-    if (Array.isArray(response.data)) {
+    if (response.data?.data?.purchaseOrders) {
+      // الهيكل الذي ظهر في الكونسول: data -> data -> purchaseOrders
+      purchaseOrders = response.data.data.purchaseOrders;
+    } else if (Array.isArray(response.data?.purchaseOrders)) {
+      // إذا كانت purchaseOrders مباشرة في data
+      purchaseOrders = response.data.purchaseOrders;
+    } else if (Array.isArray(response.data)) {
       // إذا كانت البيانات مصفوفة مباشرة
       purchaseOrders = response.data;
-    } else if (response.data.data && Array.isArray(response.data.data)) {
-      // إذا كانت البيانات داخل خاصية data
-      purchaseOrders = response.data.data;
-    } else if (response.data.purchaseOrders && Array.isArray(response.data.purchaseOrders)) {
-      // إذا كانت البيانات داخل خاصية purchaseOrders
-      purchaseOrders = response.data.purchaseOrders;
     } else if (response.data) {
-      // إذا كانت البيانات كائن مفرد (نحوله لمصفوفة)
+      // إذا كانت البيانات كائن مفرد
       purchaseOrders = [response.data];
     }
     
