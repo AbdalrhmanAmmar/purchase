@@ -250,64 +250,69 @@ const onSubmit = async (data: CreatePurchaseOrderData, sendToSupplier = false) =
   }
 };
 
-  const PhotoUpload = ({ index }: { index: number }) => {
-    const [photo, setPhoto] = useState<string>('')
+const PhotoUpload = ({ index, value, onChange }: { index: number, value: string, onChange: (v: string) => void }) => {
+  const [photo, setPhoto] = useState<string>(value || '');
 
-    const onDrop = (acceptedFiles: File[]) => {
-      const file = acceptedFiles[0]
-      if (file) {
-        const reader = new FileReader()
-        reader.onload = () => {
-          const result = reader.result as string
-          setPhoto(result)
-          setValue(`items.${index}.photo`, result)
-        }
-        reader.readAsDataURL(file)
-      }
+  useEffect(() => {
+    setPhoto(value); // update photo when form value changes
+  }, [value]);
+
+  const onDrop = (acceptedFiles: File[]) => {
+    const file = acceptedFiles[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = reader.result as string;
+        setPhoto(result);
+        onChange(result); // set form value
+      };
+      reader.readAsDataURL(file);
     }
+  };
 
-    const { getRootProps, getInputProps, isDragActive } = useDropzone({
-      onDrop,
-      accept: {
-        'image/*': ['.jpeg', '.jpg', '.png', '.webp']
-      },
-      maxFiles: 1,
-      maxSize: 5 * 1024 * 1024 // 5MB
-    })
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+    onDrop,
+    accept: {
+      'image/*': ['.jpeg', '.jpg', '.png', '.webp']
+    },
+    maxFiles: 1,
+    maxSize: 5 * 1024 * 1024 // 5MB
+  });
 
-    return (
-      <div className="flex flex-col items-center space-y-2">
-        {photo ? (
-          <div className="relative">
-            <img src={photo} alt="Product" className="w-20 h-20 object-cover rounded-lg border" />
-            <Button
-              type="button"
-              variant="destructive"
-              size="sm"
-              className="absolute -top-2 -right-2 w-6 h-6 p-0"
-              onClick={() => {
-                setPhoto('')
-                setValue(`items.${index}.photo`, '')
-              }}
-            >
-              <X className="w-3 h-3" />
-            </Button>
-          </div>
-        ) : (
-          <div
-            {...getRootProps()}
-            className={cn(
-              "w-20 h-20 border-2 border-dashed rounded-lg flex items-center justify-center cursor-pointer transition-colors",
-              isDragActive ? "border-blue-500 bg-blue-50" : "border-slate-300 hover:border-slate-400"
-            )}
+  return (
+    <div className="flex flex-col items-center space-y-2">
+      {photo ? (
+        <div className="relative">
+          <img src={photo} alt="Product" className="w-20 h-20 object-cover rounded-lg border" />
+          <Button
+            type="button"
+            variant="destructive"
+            size="sm"
+            className="absolute -top-2 -right-2 w-6 h-6 p-0"
+            onClick={() => {
+              setPhoto('');
+              onChange('');
+            }}
           >
-            <input {...getInputProps()} />
-            <Upload className="w-6 h-6 text-slate-400" />
-          </div>
-        )}
-      </div>
-    )
-  }
+            <X className="w-3 h-3" />
+          </Button>
+        </div>
+      ) : (
+        <div
+          {...getRootProps()}
+          className={cn(
+            "w-20 h-20 border-2 border-dashed rounded-lg flex items-center justify-center cursor-pointer transition-colors",
+            isDragActive ? "border-blue-500 bg-blue-50" : "border-slate-300 hover:border-slate-400"
+          )}
+        >
+          <input {...getInputProps()} />
+          <Upload className="w-6 h-6 text-slate-400" />
+        </div>
+      )}
+    </div>
+  );
+};
+
 
   const totalAmount = watchedItems?.reduce((sum, item) => sum + (item.total || 0), 0) || 0
 
@@ -455,7 +460,12 @@ const onSubmit = async (data: CreatePurchaseOrderData, sendToSupplier = false) =
                   {fields.map((field, index) => (
                     <TableRow key={field.id}>
                       <TableCell>
-                        <PhotoUpload index={index} />
+                        <PhotoUpload
+  index={index}
+  value={watchedItems?.[index]?.photo || ''}
+  onChange={(val) => setValue(`items.${index}.photo`, val)}
+/>
+
                       </TableCell>
                       <TableCell>
                         <Input
