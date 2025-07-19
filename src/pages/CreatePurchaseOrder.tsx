@@ -19,6 +19,8 @@ import { ArrowLeft, Plus, CalendarIcon, Upload, X, Package, Save, Send, CreditCa
 import { format } from "date-fns"
 import { cn } from "@/lib/utils"
 import { useDropzone } from 'react-dropzone'
+import { useWatch } from 'react-hook-form'
+
 
 interface PaymentData {
   makePayment: boolean;
@@ -30,6 +32,8 @@ interface PaymentData {
 }
 
 export function CreatePurchaseOrder() {
+
+  
   const { id } = useParams<{ id: string }>()
   const [order, setOrder] = useState<Order | null>(null)
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
@@ -62,7 +66,27 @@ export function CreatePurchaseOrder() {
     name: "items"
   })
 
-  const watchedItems = watch("items")
+  const watchedItems = useWatch({
+  control,
+  name: 'items',
+})
+
+useEffect(() => {
+  if (!watchedItems || !Array.isArray(watchedItems)) return;
+
+  watchedItems.forEach((item, index) => {
+    const quantity = parseFloat(item.quantity as any) || 0;
+    const unitPrice = parseFloat(item.unitPrice as any) || 0;
+    const total = quantity * unitPrice;
+
+    // نتحقق أولاً لتجنب التحديث المتكرر إذا لم يتغير
+    if (item.total !== total) {
+      setValue(`items.${index}.total`, total, { shouldDirty: true });
+    }
+  });
+}, [watchedItems, setValue]);
+
+  
 
   useEffect(() => {
     const fetchData = async () => {
