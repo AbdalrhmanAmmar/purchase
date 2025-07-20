@@ -19,8 +19,6 @@ import { ArrowLeft, Plus, CalendarIcon, Upload, X, Package, Save, Send, CreditCa
 import { format } from "date-fns"
 import { cn } from "@/lib/utils"
 import { useDropzone } from 'react-dropzone'
-import { useWatch } from 'react-hook-form'
-
 
 interface PaymentData {
   makePayment: boolean;
@@ -32,8 +30,6 @@ interface PaymentData {
 }
 
 export function CreatePurchaseOrder() {
-
-  
   const { id } = useParams<{ id: string }>()
   const [order, setOrder] = useState<Order | null>(null)
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
@@ -66,27 +62,14 @@ export function CreatePurchaseOrder() {
     name: "items"
   })
 
-  const watchedItems = useWatch({
-  control,
-  name: 'items',
-})
-
+  const watchedItems = watch("items")
 useEffect(() => {
-  if (!watchedItems || !Array.isArray(watchedItems)) return;
-
   watchedItems.forEach((item, index) => {
-    const quantity = parseFloat(item.quantity as any) || 0;
-    const unitPrice = parseFloat(item.unitPrice as any) || 0;
-    const total = quantity * unitPrice;
-
-    // نتحقق أولاً لتجنب التحديث المتكرر إذا لم يتغير
-    if (item.total !== total) {
-      setValue(`items.${index}.total`, total, { shouldDirty: true });
-    }
+    const total = (item.quantity || 0) * (item.unitPrice || 0);
+    setValue(`items.${index}.total`, total);
   });
-}, [watchedItems, setValue]);
+}, [JSON.stringify(watchedItems)]);
 
-  
 
   useEffect(() => {
     const fetchData = async () => {
@@ -149,63 +132,13 @@ useEffect(() => {
   }
 
 const onSubmit = async (data: CreatePurchaseOrderData, sendToSupplier = false) => {
-  // التحقق من حالة التحميل ومنع إرسال متعدد
-  if (loading) {
-    console.log('Submission blocked - already loading');
-    return;
-  }
+  if (loading) return;
 
-  // التحقق من وجود المورد المختار
-  if (!selectedSupplier) {
-    console.log('Validation failed - no supplier selected');
+  // التحقق من الصحة
+  if (!selectedSupplier || !deliveryDate || !id) {
     toast({
       title: "Error",
-      description: "Please select a supplier",
-      variant: "destructive",
-    });
-    return;
-  }
-
-  // التحقق من تاريخ التسليم
-  if (!deliveryDate) {
-    console.log('Validation failed - no delivery date selected');
-    toast({
-      title: "Error",
-      description: "Please select delivery date",
-      variant: "destructive",
-    });
-    return;
-  }
-
-  // التحقق من صحة مبلغ الدفع إذا كان هناك دفع
-  if (paymentData.makePayment) {
-    if (paymentData.amount <= 0) {
-      console.log('Validation failed - invalid payment amount');
-      toast({
-        title: "Error",
-        description: "Please enter a valid payment amount",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    if (paymentData.amount > totalAmount) {
-      console.log('Validation failed - payment amount exceeds total');
-      toast({
-        title: "Error",
-        description: "Payment amount cannot exceed total order amount",
-        variant: "destructive",
-      });
-      return;
-    }
-  }
-
-  // التحقق من وجود orderId
-  if (!id) {
-    console.log('Validation failed - no order ID');
-    toast({
-      title: "Error",
-      description: "Order ID is missing",
+      description: "Please fill all required fields",
       variant: "destructive",
     });
     return;
@@ -214,59 +147,66 @@ const onSubmit = async (data: CreatePurchaseOrderData, sendToSupplier = false) =
   setLoading(true);
 
   try {
-    // إعداد بيانات الطلب
     const supplier = suppliers.find(s => s._id === selectedSupplier);
-    
-    const requestData: CreatePurchaseOrderData = {
-      ...data,
-      orderId: id,
-      supplierId: selectedSupplier,
-      supplierName: supplier?.supplierName || 'Unknown Supplier',
-      deliveryDate: deliveryDate.toISOString(),
-      totalAmount: totalAmount,
-      paidAmount: paymentData.makePayment ? paymentData.amount : 0,
-      payments: paymentData.makePayment ? [{
-        paymentType: paymentData.paymentType,
-        amount: paymentData.amount,
-        paymentMethod: paymentData.paymentMethod,
-        reference: paymentData.reference || undefined,
-        status: 'completed',
-        description: paymentData.description || 
-                   `${paymentData.paymentType.replace('_', ' ')} payment for PO`,
-        paymentDate: new Date().toISOString()
-      }] : undefined
-    };
+    if (!supplier) throw new Error("Supplier not found");
 
-    console.log('Submitting purchase order data:', JSON.stringify(requestData, null, 2));
+    // تحضير العناصر مع التحقق من الصحة
+    const items = data.items.map(item => ({
+      description: item.description.trim(),
+      quantity: Math.max(1, Number(item.quantity)),
+      unitPrice: Math.max(0, Number(item.unitPrice)),
+      total: Math.max(1, Number(item.quantity)) * Math.max(0, Number(item.unitPrice)),
+      photo: item.photo || ''
+    }));
 
-    // إرسال الطلب إلى API
+    const totalAmount = items.reduce((sum, item) => sum + item.total, 0);
+
+    // تحضير بيانات الدفع لتتوافق مع الباك اند
+    // const payment = paymentData.makePayment ? {
+    //   paymentType: paymentData.paymentType,
+    //   amount: Math.min(paymentData.amount, totalAmount),
+    //   paymentMethod: paymentData.paymentMethod,
+    //   reference: paymentData.reference || '',
+    //   description: paymentData.description || `${paymentData.paymentType.replace('_', ' ')} payment`,
+    //   paymentDate: new Date() // تاريخ مباشر بدلاً من سلسلة نصية
+    // } : undefined;
+
+const requestData: CreatePurchaseOrderData = {
+  ...data,
+  orderId: id,
+  supplierId: selectedSupplier,
+  supplierName: supplier?.supplierName || 'Unknown Supplier',
+  deliveryDate: deliveryDate.toISOString(),
+  totalAmount: totalAmount,
+  paidAmount: paymentData.makePayment ? paymentData.amount : 0,
+  ...(paymentData.makePayment && {
+    payment: {
+      paymentType: paymentData.paymentType,
+      amount: paymentData.amount,
+      paymentMethod: paymentData.paymentMethod,
+      reference: paymentData.reference || '',
+      description: paymentData.description || `${paymentData.paymentType.replace('_', ' ')} payment for PO`
+    }
+  })
+}
+
+
+    console.log('Submitting:', JSON.stringify(requestData, null, 2));
     const response = await createPurchaseOrder(requestData);
-    console.log('API response:', response);
 
-    // عرض رسالة نجاح حسب الحالة
     toast({
       title: "Success",
-      description: paymentData.makePayment
-        ? `Purchase order created and ${paymentData.paymentType.replace('_', ' ')} payment of $${paymentData.amount} recorded`
-        : sendToSupplier 
-          ? "Purchase order created and sent to supplier" 
-          : "Purchase order saved successfully",
+      description: sendToSupplier 
+        ? "Purchase order sent to supplier" 
+        : "Purchase order saved",
     });
-
-    // التوجيه إلى صفحة الطلب
+    
     navigate(`/orders/${id}`);
-
-  } catch (error: any) {
-    console.error('Error creating purchase order:', error);
-    
-    // عرض رسالة خطأ مفصلة إذا توفرت
-    const errorMessage = error.response?.data?.message || 
-                       error.message || 
-                       "Failed to create purchase order";
-    
+  } catch (error) {
+    console.error('Error:', error);
     toast({
       title: "Error",
-      description: errorMessage,
+      description: error.response?.data?.message || error.message,
       variant: "destructive",
     });
   } finally {
@@ -274,21 +214,22 @@ const onSubmit = async (data: CreatePurchaseOrderData, sendToSupplier = false) =
   }
 };
 
-const PhotoUpload = ({ index, value, onChange }: { index: number, value: string, onChange: (v: string) => void }) => {
-  const [photo, setPhoto] = useState<string>(value || '');
-
-  useEffect(() => {
-    setPhoto(value); // update photo when form value changes
-  }, [value]);
-
+const PhotoUpload = ({
+  index,
+  value,
+  onChange,
+}: {
+  index: number
+  value: string
+  onChange: (val: string) => void
+}) => {
   const onDrop = (acceptedFiles: File[]) => {
     const file = acceptedFiles[0];
     if (file) {
       const reader = new FileReader();
       reader.onload = () => {
         const result = reader.result as string;
-        setPhoto(result);
-        onChange(result); // set form value
+        onChange(result); // مباشرة على النموذج
       };
       reader.readAsDataURL(file);
     }
@@ -300,23 +241,20 @@ const PhotoUpload = ({ index, value, onChange }: { index: number, value: string,
       'image/*': ['.jpeg', '.jpg', '.png', '.webp']
     },
     maxFiles: 1,
-    maxSize: 5 * 1024 * 1024 // 5MB
+    maxSize: 5 * 1024 * 1024
   });
 
   return (
     <div className="flex flex-col items-center space-y-2">
-      {photo ? (
+      {value ? (
         <div className="relative">
-          <img src={photo} alt="Product" className="w-20 h-20 object-cover rounded-lg border" />
+          <img src={value} alt="Product" className="w-20 h-20 object-cover rounded-lg border" />
           <Button
             type="button"
             variant="destructive"
             size="sm"
             className="absolute -top-2 -right-2 w-6 h-6 p-0"
-            onClick={() => {
-              setPhoto('');
-              onChange('');
-            }}
+            onClick={() => onChange('')}
           >
             <X className="w-3 h-3" />
           </Button>
@@ -484,10 +422,10 @@ const PhotoUpload = ({ index, value, onChange }: { index: number, value: string,
                   {fields.map((field, index) => (
                     <TableRow key={field.id}>
                       <TableCell>
-                        <PhotoUpload
+                       <PhotoUpload
   index={index}
   value={watchedItems?.[index]?.photo || ''}
-  onChange={(val) => setValue(`items.${index}.photo`, val)}
+  onChange={(val) => setValue(`items.${index}.photo`, val, { shouldDirty: true })}
 />
 
                       </TableCell>

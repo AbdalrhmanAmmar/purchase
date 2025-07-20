@@ -138,10 +138,16 @@ export const getPurchaseOrders = async (filters: {
 // Response: { success: boolean, message: string, data: { purchaseOrder: PurchaseOrder } }
 export const createPurchaseOrder = async (data: CreatePurchaseOrderData) => {
   try {
-    const response = await api.post('/api/purchase-orders', data);
+    const response = await api.post('/api/purchase-orders', data, {
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    });
     return response.data;
   } catch (error: any) {
-    console.error('Error creating purchase order:', error.response?.data || error.message);
+    if (error.response) {
+      throw new Error(error.response.data.message || 'Failed to create purchase order');
+    }
     throw error;
   }
 };
