@@ -131,6 +131,71 @@ useEffect(() => {
     }
   }
 
+const handlePasteFromExcel = async () => {
+  try {
+    const clipboardItems = await navigator.clipboard.read();
+    
+    for (const clipboardItem of clipboardItems) {
+      for (const type of clipboardItem.types) {
+        if (type === 'text/plain') {
+          const blob = await clipboardItem.getType(type);
+          const text = await blob.text();
+          
+          // Parse the pasted data
+          const rows = text.split('\n')
+            .filter(row => row.trim() !== '')
+            .map(row => row.split('\t').map(cell => cell.trim()));
+          
+          // Process each row
+          const newItems = rows.map(row => {
+            // Ensure we have at least description, quantity, and unitPrice
+            if (row.length < 3) return null;
+            
+            const photo = row[0] || '';
+            const description = row[1] || '';
+            const quantity = parseFloat(row[2]) || 1;
+            const unitPrice = parseFloat(row[3]) || 0;
+            
+            return {
+              description,
+              quantity: Math.max(1, quantity),
+              unitPrice: Math.max(0, unitPrice),
+              total: Math.max(1, quantity) * Math.max(0, unitPrice),
+              photo: photo // No need for trim() since we already trimmed all cells
+            };
+          }).filter(item => item !== null); // Filter out invalid rows
+          
+          if (newItems.length === 0) {
+            toast({
+              title: "No valid data",
+              description: "Couldn't find valid product data in the clipboard",
+              variant: "destructive",
+            });
+            return;
+          }
+          
+          // Add the new items
+          newItems.forEach(item => {
+            if (item) append(item);
+          });
+          
+          toast({
+            title: "Success",
+            description: `Added ${newItems.length} items from clipboard`,
+          });
+        }
+      }
+    }
+  } catch (error) {
+    console.error('Error pasting from clipboard:', error);
+    toast({
+      title: "Error",
+      description: "Failed to paste data. Please make sure you've copied data from Excel first.",
+      variant: "destructive",
+    });
+  }
+};
+
 const onSubmit = async (data: CreatePurchaseOrderData, sendToSupplier = false) => {
   if (loading) return;
 
@@ -388,23 +453,34 @@ const PhotoUpload = ({
 
         {/* Product Details */}
         <Card className="bg-white/80 backdrop-blur-sm border-slate-200/50">
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle className="text-slate-900">Product Details</CardTitle>
-                <CardDescription>Add products with photos, descriptions, and pricing</CardDescription>
-              </div>
-              <Button
-                type="button"
-                onClick={() => append({ description: '', quantity: 1, unitPrice: 0, total: 0 })}
-                variant="outline"
-                size="sm"
-              >
-                <Plus className="w-4 h-4 mr-2" />
-                Add Item
-              </Button>
-            </div>
-          </CardHeader>
+   <CardHeader>
+  <div className="flex items-center justify-between">
+    <div>
+      <CardTitle className="text-slate-900">Product Details</CardTitle>
+      <CardDescription>Add products with photos, descriptions, and pricing</CardDescription>
+    </div>
+    <div className="flex space-x-2">
+      <Button
+        type="button"
+        onClick={handlePasteFromExcel}
+        variant="outline"
+        size="sm"
+      >
+        <Package className="w-4 h-4 mr-2" />
+        Paste from Excel
+      </Button>
+      <Button
+        type="button"
+        onClick={() => append({ description: '', quantity: 1, unitPrice: 0, total: 0 })}
+        variant="outline"
+        size="sm"
+      >
+        <Plus className="w-4 h-4 mr-2" />
+        Add Item
+      </Button>
+    </div>
+  </div>
+</CardHeader>
           <CardContent>
             <div className="overflow-x-auto">
               <Table>
