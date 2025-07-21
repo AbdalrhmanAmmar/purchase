@@ -11,8 +11,10 @@ import {
   Settings,
   Calculator,
   CreditCard,
-  Database
+  Database,
+  Menu
 } from "lucide-react"
+import { useState } from "react"
 
 const navigation = [
   { name: "Dashboard", href: "/", icon: LayoutDashboard },
@@ -29,12 +31,23 @@ const navigation = [
 ]
 
 export function Sidebar() {
+  const [collapsed, setCollapsed] = useState(false)
   const location = useLocation()
 
+  const toggleSidebar = () => {
+    setCollapsed(!collapsed)
+  }
+
   return (
-    <div className="flex h-full w-64 flex-col bg-white border-r">
-      <div className="flex h-16 items-center px-6 border-b">
-        <h1 className="text-xl font-bold text-gray-900">BrokerPro</h1>
+    <div className={cn(
+      "flex h-full flex-col bg-white border-r transition-all duration-300",
+      collapsed ? "w-20" : "w-64"
+    )}>
+      <div className="flex h-16 items-center px-6 border-b justify-between">
+        {!collapsed && <h1 className="text-xl font-bold text-gray-900">BrokerPro</h1>}
+        <button onClick={toggleSidebar}>
+          <Menu size={30} />
+        </button>
       </div>
       <nav className="flex-1 space-y-1 px-4 py-4">
         {navigation.map((item) => {
@@ -51,14 +64,18 @@ export function Sidebar() {
                   ? "bg-blue-50 text-blue-700"
                   : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
               )}
+              title={collapsed ? item.name : undefined}
             >
               <item.icon
                 className={cn(
-                  "mr-3 h-5 w-5 flex-shrink-0",
+                  "h-5 w-5 flex-shrink-0",
+                  collapsed ? "mx-auto" : "mr-3",
                   isActive ? "text-blue-500" : "text-gray-400 group-hover:text-gray-500"
                 )}
               />
-              {item.name}
+              {!collapsed && (
+                <span>{item.name}</span>
+              )}
             </Link>
           )
         })}

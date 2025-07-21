@@ -38,44 +38,55 @@ export function CreateInvoice() {
     }
   })
 
-useEffect(() => {
+  useEffect(() => {
     const fetchData = async () => {
       if (!id) return
 
       try {
         console.log('Fetching order and purchase orders for invoice creation...')
-        const response = await getOrderById(id) as { order: Order, purchaseOrders: PurchaseOrder[] }
+        const response = await getOrderById(id)
         
-        // طباعة بيانات الطلب بالتفصيل
-        console.log('--- Order Details ---')
-        console.log('Order ID:', response.order?._id)
-        console.log('Project Name:', response.order?.projectName)
-        console.log('Client Name:', response.order?.clientName)
-        console.log('Commission Rate:', response.order?.commissionRate)
-        console.log('Full Order Object:', response.order)
-        
-        // طباعة أوامر الشراء
-        console.log('--- Purchase Orders ---')
-        console.log('Number of POs:', response.purchaseOrders?.length || 0)
-        console.log('POs Array:', response.purchaseOrders)
+        console.log('Order:', response.order)
+        console.log('Purchase Orders:', response.order.purchaseOrders)
+
+        if (!response.order) {
+          throw new Error('Order not found')
+        }
 
         setOrder(response.order)
-        setPurchaseOrders(response.purchaseOrders || [])
+        setPurchaseOrders(response.order.purchaseOrders || [])
         
-        // ... rest of your code ...
+        // Initialize quantities and prices
+        const initialQuantities: { [key: string]: number } = {}
+        const initialPrices: { [key: string]: number } = {}
+        const initialSelected: { [key: string]: boolean } = {}
+        
+        response.purchaseOrders?.forEach(po => {
+          po.items?.forEach(item => {
+            const key = `${po._id}_${item._id}`
+            initialQuantities[key] = item.quantity
+            initialPrices[key] = item.unitPrice
+            initialSelected[key] = true // Select all items by default
+          })
+        })
+        
+        setItemQuantities(initialQuantities)
+        setItemPrices(initialPrices)
+        setSelectedItems(initialSelected)
         
       } catch (error) {
         console.error('Error fetching data:', error)
         toast({
           title: "Error",
-          description: "Failed to load data",
+          description: "Failed to load order data",
           variant: "destructive",
         })
+        navigate(`/orders/${id}`)
       }
     }
 
     fetchData()
-  }, [id, toast])
+  }, [id, toast, navigate])
 
   const handleItemSelection = (key: string, checked: boolean) => {
     setSelectedItems(prev => ({ ...prev, [key]: checked }))
@@ -93,7 +104,7 @@ useEffect(() => {
     const items: InvoiceItem[] = []
     
     purchaseOrders.forEach(po => {
-      po.items.forEach(item => {
+      po.items?.forEach(item => {
         const key = `${po._id}_${item._id}`
         if (selectedItems[key]) {
           const quantity = itemQuantities[key] || item.quantity
@@ -148,7 +159,6 @@ useEffect(() => {
 
     setLoading(true)
     try {
-      console.log('Creating invoice...')
       const invoiceData = {
         ...data,
         orderId: id,
@@ -158,7 +168,6 @@ useEffect(() => {
       }
 
       await createInvoice(invoiceData)
-      console.log('Invoice created successfully')
       toast({
         title: "Success",
         description: "Sales invoice generated successfully",
@@ -243,7 +252,7 @@ useEffect(() => {
             <CardDescription>Select and modify items to include in the sales invoice</CardDescription>
           </CardHeader>
           <CardContent>
-            {purchaseOrders.length > 0 ? (
+            {purchaseOrders && purchaseOrders.length > 0 ? (
               <div className="overflow-x-auto">
                 <Table>
                   <TableHeader>
@@ -259,7 +268,7 @@ useEffect(() => {
                   </TableHeader>
                   <TableBody>
                     {purchaseOrders.map(po => 
-                      po.items.map((item, itemIndex) => {
+                      po.items?.map((item, itemIndex) => {
                         const key = `${po._id}_${item._id || itemIndex}`
                         const quantity = itemQuantities[key] || item.quantity
                         const sellPrice = itemPrices[key] || item.unitPrice
@@ -313,7 +322,7 @@ useEffect(() => {
             ) : (
               <div className="text-center py-8">
                 <FileText className="w-12 h-12 text-slate-400 mx-auto mb-4" />
-                <p className="text-slate-600 mb-4">No purchase orders found. Create purchase orders first.</p>
+                <p className="text-slate-600 mb-4">No purchase orders found for this order.</p>
                 <Button onClick={() => navigate(`/orders/${id}/purchase-order`)} variant="outline">
                   Create Purchase Order
                 </Button>

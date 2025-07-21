@@ -55,8 +55,8 @@ useEffect(() => {
     if (!id) return;
 
     try {
-      console.log('Fetching order details...');
-
+      setLoading(true);
+      
       const [
         orderResponse,
         purchaseOrdersResponse,
@@ -69,16 +69,9 @@ useEffect(() => {
         getShippingInvoicesByOrderId(id)
       ]);
 
-      console.log('Purchase Orders Response:', purchaseOrdersResponse);
-
-      setOrder(orderResponse?.order || null);
-
-      // تأكد من أن purchaseOrdersResponse يحتوي على مصفوفة
-      const purchaseOrders = Array.isArray(purchaseOrdersResponse.purchaseOrders)
-        ? purchaseOrdersResponse.purchaseOrders
-        : [];
-
-      setPurchaseOrders(purchaseOrders);
+      // التعديل هنا: الوصول إلى البيانات عبر `data.order`
+      setOrder(orderResponse?.order?.order || null);
+      setPurchaseOrders(orderResponse?.order?.purchaseOrders || []);
       setInvoices(invoicesResponse?.invoices || []);
       setShippingInvoices(shippingResponse?.shippingInvoices || []);
     } catch (error) {
@@ -237,7 +230,8 @@ useEffect(() => {
               <Building2 className="w-4 h-4 text-slate-500" />
               <div>
                 <p className="text-sm text-slate-600">Workflow Type</p>
-                <p className="font-medium text-slate-900 capitalize">{order.workflowType.replace('-', ' ')}</p>
+                <p className="font-medium text-slate-900 capitalize">{order?.status.replace('-', ' ')}</p>
+             
               </div>
             </div>
           </div>
