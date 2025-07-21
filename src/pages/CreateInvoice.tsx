@@ -38,35 +38,32 @@ export function CreateInvoice() {
     }
   })
 
-  useEffect(() => {
+useEffect(() => {
     const fetchData = async () => {
       if (!id) return
 
       try {
         console.log('Fetching order and purchase orders for invoice creation...')
         const response = await getOrderById(id) as { order: Order, purchaseOrders: PurchaseOrder[] }
+        
+        // طباعة بيانات الطلب بالتفصيل
+        console.log('--- Order Details ---')
+        console.log('Order ID:', response.order?._id)
+        console.log('Project Name:', response.order?.projectName)
+        console.log('Client Name:', response.order?.clientName)
+        console.log('Commission Rate:', response.order?.commissionRate)
+        console.log('Full Order Object:', response.order)
+        
+        // طباعة أوامر الشراء
+        console.log('--- Purchase Orders ---')
+        console.log('Number of POs:', response.purchaseOrders?.length || 0)
+        console.log('POs Array:', response.purchaseOrders)
+
         setOrder(response.order)
         setPurchaseOrders(response.purchaseOrders || [])
         
-        // Initialize selected items and quantities from purchase orders
-        const initialSelected: { [key: string]: boolean } = {}
-        const initialQuantities: { [key: string]: number } = {}
-        const initialPrices: { [key: string]: number } = {}
+        // ... rest of your code ...
         
-        response.purchaseOrders?.forEach(po => {
-          po.items.forEach(item => {
-            const key = `${po._id}_${item._id}`
-            initialSelected[key] = true
-            initialQuantities[key] = item.quantity
-            initialPrices[key] = item.unitPrice * 1.5 // Add markup for selling price
-          })
-        })
-        
-        setSelectedItems(initialSelected)
-        setItemQuantities(initialQuantities)
-        setItemPrices(initialPrices)
-        
-        console.log('Data loaded successfully')
       } catch (error) {
         console.error('Error fetching data:', error)
         toast({
