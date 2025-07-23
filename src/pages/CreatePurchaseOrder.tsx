@@ -151,7 +151,9 @@ const handlePasteFromExcel = async () => {
             // Ensure we have at least description, quantity, and unitPrice
             if (row.length < 3) return null;
             
-            const photo = row[0] || '';
+            // Default empty photo or placeholder
+            const photo = row[0] ? row[0] : '/placeholder-product.png'; // Add a default placeholder image path
+            
             const description = row[1] || '';
             const quantity = parseFloat(row[2]) || 1;
             const unitPrice = parseFloat(row[3]) || 0;
@@ -161,7 +163,7 @@ const handlePasteFromExcel = async () => {
               quantity: Math.max(1, quantity),
               unitPrice: Math.max(0, unitPrice),
               total: Math.max(1, quantity) * Math.max(0, unitPrice),
-              photo: photo // No need for trim() since we already trimmed all cells
+              photo: photo // Ensure photo is always defined
             };
           }).filter(item => item !== null); // Filter out invalid rows
           
@@ -173,6 +175,9 @@ const handlePasteFromExcel = async () => {
             });
             return;
           }
+          
+          // Clear existing items first
+          remove(); // Remove all existing items
           
           // Add the new items
           newItems.forEach(item => {
@@ -226,15 +231,7 @@ const onSubmit = async (data: CreatePurchaseOrderData, sendToSupplier = false) =
 
     const totalAmount = items.reduce((sum, item) => sum + item.total, 0);
 
-    // تحضير بيانات الدفع لتتوافق مع الباك اند
-    // const payment = paymentData.makePayment ? {
-    //   paymentType: paymentData.paymentType,
-    //   amount: Math.min(paymentData.amount, totalAmount),
-    //   paymentMethod: paymentData.paymentMethod,
-    //   reference: paymentData.reference || '',
-    //   description: paymentData.description || `${paymentData.paymentType.replace('_', ' ')} payment`,
-    //   paymentDate: new Date() // تاريخ مباشر بدلاً من سلسلة نصية
-    // } : undefined;
+
 
 const requestData: CreatePurchaseOrderData = {
   ...data,
@@ -288,52 +285,72 @@ const PhotoUpload = ({
   value: string
   onChange: (val: string) => void
 }) => {
-  const onDrop = (acceptedFiles: File[]) => {
-    const file = acceptedFiles[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = () => {
-        const result = reader.result as string;
-        onChange(result); // مباشرة على النموذج
-      };
-      reader.readAsDataURL(file);
+  const DEFAULT_PLACEHOLDER = 'https://via.placeholder.com/80?text=No+Image';
+
+  const handleImageChange = (files: File[]) => {
+    const file = files[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      toast({
+        title: "خطأ في نوع الملف",
+        description: "الرجاء رفع ملف صورة فقط (JPEG, PNG, WebP)",
+        variant: "destructive",
+      });
+      return;
     }
+
+    const reader = new FileReader();
+    reader.onload = () => onChange(reader.result as string);
+    reader.onerror = () => {
+      toast({
+        title: "خطأ في قراءة الملف",
+        description: "تعذر قراءة ملف الصورة",
+        variant: "destructive",
+      });
+    };
+    reader.readAsDataURL(file);
   };
 
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({
-    onDrop,
+  const { getRootProps, getInputProps } = useDropzone({
+    onDrop: handleImageChange,
     accept: {
-      'image/*': ['.jpeg', '.jpg', '.png', '.webp']
+      'image/jpeg': ['.jpeg', '.jpg'],
+      'image/png': ['.png'],
+      'image/webp': ['.webp']
     },
     maxFiles: 1,
-    maxSize: 5 * 1024 * 1024
+    maxSize: 5 * 1024 * 1024,
   });
 
   return (
     <div className="flex flex-col items-center space-y-2">
       {value ? (
         <div className="relative">
-          <img src={value} alt="Product" className="w-20 h-20 object-cover rounded-lg border" />
-          <Button
+          <img
+            src={value}
+            alt={`Product ${index + 1}`}
+            className="w-20 h-20 object-contain rounded-lg border bg-gray-100"
+            onError={(e) => {
+              (e.target as HTMLImageElement).src = DEFAULT_PLACEHOLDER;
+            }}
+          />
+          <button
             type="button"
-            variant="destructive"
-            size="sm"
-            className="absolute -top-2 -right-2 w-6 h-6 p-0"
             onClick={() => onChange('')}
+            className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600"
           >
             <X className="w-3 h-3" />
-          </Button>
+          </button>
         </div>
       ) : (
         <div
           {...getRootProps()}
-          className={cn(
-            "w-20 h-20 border-2 border-dashed rounded-lg flex items-center justify-center cursor-pointer transition-colors",
-            isDragActive ? "border-blue-500 bg-blue-50" : "border-slate-300 hover:border-slate-400"
-          )}
+          className="w-20 h-20 border-2 border-dashed rounded-lg flex flex-col items-center justify-center cursor-pointer border-gray-300 hover:border-gray-400"
         >
           <input {...getInputProps()} />
-          <Upload className="w-6 h-6 text-slate-400" />
+          <Upload className="w-5 h-5 text-gray-400 mb-1" />
+          <span className="text-xs text-gray-500 text-center px-1">اضغط أو اسحب صورة</span>
         </div>
       )}
     </div>
