@@ -130,3 +130,52 @@ export const createInvoice = (data: CreateInvoiceData) => {
   //   throw new Error(error?.response?.data?.message || error.message);
   // }
 };
+
+export const updateInvoice = (orderId: string, invoiceId: string, updatedData: Partial<Invoice>) => {
+  return new Promise((resolve, reject) => {
+    setTimeout(() => {
+      const storedInvoices = localStorage.getItem(`invoices_${orderId}`);
+      if (!storedInvoices) return reject(new Error("No invoices found for this order"));
+
+      let invoices: Invoice[] = JSON.parse(storedInvoices);
+
+      const index = invoices.findIndex(inv => inv._id === invoiceId);
+      if (index === -1) return reject(new Error("Invoice not found"));
+
+      const oldInvoice = invoices[index];
+      const updatedItems = updatedData.items || oldInvoice.items;
+
+      // Recalculate totals if items changed
+      const processedItems = updatedItems.map(item => ({
+        ...item,
+        quantity: Number(item.quantity) || 0,
+        unitPrice: Number(item.unitPrice) || 0,
+        total: Number(item.total) || 0,
+      }));
+
+      const subtotal = processedItems.reduce((sum, item) => sum + item.total, 0);
+      const commissionRate = oldInvoice.commissionRate || 5.5;
+      const commissionFee = subtotal * (commissionRate / 100);
+      const total = subtotal + commissionFee;
+
+      const updatedInvoice: Invoice = {
+        ...oldInvoice,
+        ...updatedData,
+        items: processedItems,
+        subtotal,
+        commissionFee,
+        commissionRate,
+        total,
+        updatedAt: new Date().toISOString()
+      };
+
+      invoices[index] = updatedInvoice;
+      localStorage.setItem(`invoices_${orderId}`, JSON.stringify(invoices));
+
+      resolve({
+        invoice: updatedInvoice,
+        message: "Invoice updated successfully"
+      });
+    }, 500);
+  });
+};
