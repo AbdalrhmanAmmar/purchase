@@ -5,9 +5,8 @@ import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { getOrderById, Order } from "@/api/orders"
-import { getPurchaseOrdersByOrderId, PurchaseOrder } from "@/api/purchaseOrders"
+import { getPurchaseOrdersByOrderId, PurchaseOrder, updatePurchaseOrder } from "@/api/purchaseOrders"
 import { getInvoicesByOrderId, Invoice, updateInvoice } from "@/api/invoices"
-import { getShippingInvoicesByOrderId, ShippingInvoice } from "@/api/shipping"
 import { ImagePlaceholder } from "@/components/ImagePlaceholder"
 import { WorkflowProgress } from "@/components/WorkflowProgress"
 import { useToast } from "@/hooks/useToast"
@@ -25,7 +24,8 @@ import {
   User,
   Building2,
   Save,
-  X
+  X,
+  Edit
 } from "lucide-react"
 import {
   exportOrderOverviewToExcel,
@@ -43,16 +43,13 @@ export function OrderDetail() {
   const [order, setOrder] = useState<Order | null>(null)
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([])
   const [invoices, setInvoices] = useState<Invoice[]>([])
-  const [shippingInvoices, setShippingInvoices] = useState<ShippingInvoice[]>([])
+  const [shippingInvoices, setShippingInvoices] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null)
-  const [editFormData, setEditFormData] = useState<Partial<Invoice>>({})
+  const [editingPurchaseOrder, setEditingPurchaseOrder] = useState<PurchaseOrder | null>(null)
+  const [editFormData, setEditFormData] = useState<Partial<Invoice> | Partial<PurchaseOrder>>({})
   const { toast } = useToast()
   const navigate = useNavigate()
-
-  useEffect(() => {
-    console.log('Purchase orders state:', purchaseOrders);
-  }, [purchaseOrders]);
 
   useEffect(() => {
     const fetchOrderData = async () => {
@@ -70,18 +67,18 @@ export function OrderDetail() {
           getOrderById(id),
           getPurchaseOrdersByOrderId(id),
           getInvoicesByOrderId(id),
-          getShippingInvoicesByOrderId(id)
+          // getShippingInvoicesByOrderId(id)
         ]);
 
         setOrder(orderResponse?.order?.order || null);
         setPurchaseOrders(orderResponse?.order?.purchaseOrders || []);
         setInvoices(invoicesResponse?.invoices || []);
-        setShippingInvoices(shippingResponse?.shippingInvoices || []);
+        // setShippingInvoices(shippingResponse?.shippingInvoices || []);
       } catch (error) {
         console.error('Error fetching order details:', error);
         toast({
-          title: "خطأ",
-          description: "فشل في تحميل تفاصيل الطلب",
+          title: "Error",
+          description: "Failed to load order details",
           variant: "destructive",
         });
       } finally {
@@ -92,87 +89,124 @@ export function OrderDetail() {
     fetchOrderData();
   }, [id, toast]);
 
-  const handleEditInvoice = (invoice: Invoice) => {
-    setEditingInvoice(invoice);
+  // Handle editing for both invoices and purchase orders
+  const handleEdit = (item: Invoice | PurchaseOrder, type: 'invoice' | 'purchaseOrder') => {
+    if (type === 'invoice') {
+      setEditingInvoice(item as Invoice);
+    } else {
+      setEditingPurchaseOrder(item as PurchaseOrder);
+    }
     setEditFormData({
-      ...invoice,
-      items: [...invoice.items]
+      ...item,
+      items: [...item.items]
     });
   };
 
-const handleEditFormChange = (e: React.ChangeEvent<HTMLInputElement>, index?: number) => {
-  const { name, value } = e.target;
+  const handleEditFormChange = (e: React.ChangeEvent<HTMLInputElement>, index?: number) => {
+    const { name, value } = e.target;
 
-  if (name.startsWith('items.') && index !== undefined) {
-    const parts = name.split('.'); // ["items", "0", "quantity"]
-    const itemField = parts[2];
+    if (name.startsWith('items.') && index !== undefined) {
+      const parts = name.split('.');
+      const itemField = parts[2];
 
-    const updatedItems = [...(editFormData.items || [])];
+      const updatedItems = [...(editFormData.items || [])];
 
-    updatedItems[index] = {
-      ...updatedItems[index],
-      [itemField]: ['quantity', 'unitPrice', 'total'].includes(itemField)
-        ? Number(value)
-        : value,
-    };
+      updatedItems[index] = {
+        ...updatedItems[index],
+        [itemField]: ['quantity', 'unitPrice', 'total'].includes(itemField)
+          ? Number(value)
+          : value,
+      };
 
-    if (itemField === 'quantity' || itemField === 'unitPrice') {
-      const quantity = Number(updatedItems[index].quantity) || 0;
-      const unitPrice = Number(updatedItems[index].unitPrice) || 0;
-      updatedItems[index].total = quantity * unitPrice;
-    }
+      // Calculate totals if quantity or price changes
+      if (itemField === 'quantity' || itemField === 'unitPrice') {
+        const quantity = Number(updatedItems[index].quantity) || 0;
+        const unitPrice = Number(updatedItems[index].unitPrice) || 0;
+        updatedItems[index].total = quantity * unitPrice;
+      }
 
-    const newSubtotal = updatedItems.reduce((sum, item) => sum + (item.total || 0), 0);
-    const newCommissionRate = editFormData.commissionRate || 5.5;
-    const newCommissionFee = newSubtotal * (newCommissionRate / 100);
-    const newTotal = newSubtotal + newCommissionFee;
+      // Calculate new totals
+      const newSubtotal = updatedItems.reduce((sum, item) => sum + (item.total || 0), 0);
+      
+      // For invoices, calculate commission
+      if (editingInvoice) {
+        const newCommissionRate = (editFormData as Partial<Invoice>).commissionRate || 5.5;
+        const newCommissionFee = newSubtotal * (newCommissionRate / 100);
+        const newTotal = newSubtotal + newCommissionFee;
 
-    setEditFormData({
-      ...editFormData,
-      items: updatedItems,
-      subtotal: newSubtotal,
-      commissionFee: newCommissionFee,
-      total: newTotal,
-    });
-  } else {
-    setEditFormData({
-      ...editFormData,
-      [name]: value,
-    });
-  }
-};
-
-
-  const handleSaveInvoice = async () => {
-    if (!editingInvoice || !id) return;
-
-    try {
-      const response = await updateInvoice(
-        id,
-        editingInvoice._id,
-        editFormData
-      );
-
-      if (response) {
-        setInvoices(invoices.map(inv => 
-          inv._id === editingInvoice._id ? response.invoice : inv
-        ));
-        setEditingInvoice(null);
-        setEditFormData({});
-        
-        toast({
-          title: "تم التحديث",
-          description: "تم تحديث الفاتورة بنجاح",
-          variant: "default",
+        setEditFormData({
+          ...editFormData,
+          items: updatedItems,
+          subtotal: newSubtotal,
+          commissionFee: newCommissionFee,
+          total: newTotal,
+        });
+      } else {
+        // For purchase orders, just update subtotal
+        setEditFormData({
+          ...editFormData,
+          items: updatedItems,
+          totalAmount: newSubtotal,
         });
       }
+    } else {
+      setEditFormData({
+        ...editFormData,
+        [name]: value,
+      });
+    }
+  };
+
+  const handleSave = async () => {
+    if (!id) return;
+
+    try {
+      if (editingInvoice) {
+        const response = await updateInvoice(
+          id,
+          editingInvoice._id,
+          editFormData as Partial<Invoice>
+        );
+
+        if (response) {
+          setInvoices(invoices.map(inv => 
+            inv._id === editingInvoice._id ? response.invoice : inv
+          ));
+          setEditingInvoice(null);
+          toast({
+            title: "Success",
+            description: "Invoice updated successfully",
+            variant: "default",
+          });
+        }
+      } else if (editingPurchaseOrder) {
+        const response = await updatePurchaseOrder(
+          id,
+          editingPurchaseOrder._id,
+          editFormData as Partial<PurchaseOrder>
+        );
+
+        if (response) {
+          setPurchaseOrders(purchaseOrders.map(po => 
+            po._id === editingPurchaseOrder._id ? response.purchaseOrder : po
+          ));
+          setEditingPurchaseOrder(null);
+          toast({
+            title: "Success",
+            description: "Purchase order updated successfully",
+            variant: "default",
+          });
+        }
+      }
     } catch (error) {
-      console.error('Error updating invoice:', error);
+      console.error('Error updating:', error);
       toast({
-        title: "خطأ",
-        description: "فشل في تحديث الفاتورة",
+        title: "Error",
+        description: "Failed to update",
         variant: "destructive",
       });
+    } finally {
+      setEditFormData({});
     }
   };
 
@@ -183,7 +217,9 @@ const handleEditFormChange = (e: React.ChangeEvent<HTMLInputElement>, index?: nu
       completed: 'bg-green-100 text-green-800 border-green-200',
       cancelled: 'bg-red-100 text-red-800 border-red-200',
       draft: 'bg-gray-100 text-gray-800 border-gray-200',
-      sent: 'bg-blue-100 text-blue-800 border-blue-200'
+      sent: 'bg-blue-100 text-blue-800 border-blue-200',
+      paid: 'bg-green-100 text-green-800 border-green-200',
+      shipped: 'bg-purple-100 text-purple-800 border-purple-200'
     }
     return variants[status as keyof typeof variants] || 'bg-gray-100 text-gray-800'
   }
@@ -194,11 +230,6 @@ const handleEditFormChange = (e: React.ChangeEvent<HTMLInputElement>, index?: nu
         name: 'Order Created',
         completed: true,
         optional: false
-      },
-      {
-        name: 'Quotations',
-        completed: false,
-        optional: true
       },
       {
         name: 'Purchase Orders',
@@ -254,13 +285,15 @@ const handleEditFormChange = (e: React.ChangeEvent<HTMLInputElement>, index?: nu
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center space-x-4">
-        <Button variant="ghost" onClick={() => navigate('/orders')} className="p-2">
-          <ArrowLeft className="w-4 h-4" />
-        </Button>
-        <div className="flex-1">
-          <h1 className="text-3xl font-bold text-slate-900 dark:text-white">Order #{id}</h1>
-          <p className="text-slate-600 dark:text-slate-400">{order.projectName}</p>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center space-x-4">
+          <Button variant="ghost" onClick={() => navigate('/orders')} className="p-2">
+            <ArrowLeft className="w-4 h-4" />
+          </Button>
+          <div>
+            <h1 className="text-2xl font-bold text-slate-900">Order #{id}</h1>
+            <p className="text-slate-600">{order.projectName}</p>
+          </div>
         </div>
         <div className="flex space-x-2">
           <Button onClick={() => navigate(`/orders/${id}/purchase-order`)} variant="outline">
@@ -282,11 +315,11 @@ const handleEditFormChange = (e: React.ChangeEvent<HTMLInputElement>, index?: nu
       <WorkflowProgress steps={getWorkflowSteps()} />
 
       {/* Order Overview */}
-      <Card className="bg-white/80 backdrop-blur-sm border-slate-200/50">
+      <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
             <div>
-              <CardTitle className="text-slate-900">Order Overview</CardTitle>
+              <CardTitle>Order Overview</CardTitle>
               <CardDescription>Basic order information and status</CardDescription>
             </div>
             <div className="flex space-x-2">
@@ -303,34 +336,34 @@ const handleEditFormChange = (e: React.ChangeEvent<HTMLInputElement>, index?: nu
         </CardHeader>
         <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           <div className="space-y-4">
-            <div className="flex items-center space-x-2">
-              <User className="w-4 h-4 text-slate-500" />
+            <div className="flex items-center space-x-3">
+              <User className="w-5 h-5 text-slate-500" />
               <div>
                 <p className="text-sm text-slate-600">Client</p>
-                <p className="font-medium text-slate-900">{order.clientName}</p>
+                <p className="font-medium">{order.clientName}</p>
               </div>
             </div>
-            <div className="flex items-center space-x-2">
-              <Building2 className="w-4 h-4 text-slate-500" />
+            <div className="flex items-center space-x-3">
+              <Building2 className="w-5 h-5 text-slate-500" />
               <div>
                 <p className="text-sm text-slate-600">Workflow Type</p>
-                <p className="font-medium text-slate-900 capitalize">{order?.status.replace('-', ' ')}</p>
+                <p className="font-medium capitalize">{order?.status.replace('-', ' ')}</p>
               </div>
             </div>
           </div>
           <div className="space-y-4">
-            <div className="flex items-center space-x-2">
-              <Calendar className="w-4 h-4 text-slate-500" />
+            <div className="flex items-center space-x-3">
+              <Calendar className="w-5 h-5 text-slate-500" />
               <div>
                 <p className="text-sm text-slate-600">Expected Delivery</p>
-                <p className="font-medium text-slate-900">{new Date(order.expectedDelivery).toLocaleDateString()}</p>
+                <p className="font-medium">{new Date(order.expectedDelivery).toLocaleDateString()}</p>
               </div>
             </div>
-            <div className="flex items-center space-x-2">
-              <DollarSign className="w-4 h-4 text-slate-500" />
+            <div className="flex items-center space-x-3">
+              <DollarSign className="w-5 h-5 text-slate-500" />
               <div>
                 <p className="text-sm text-slate-600">Commission Rate</p>
-                <p className="font-medium text-slate-900">{order.commissionRate}%</p>
+                <p className="font-medium">{order.commissionRate}%</p>
               </div>
             </div>
           </div>
@@ -362,18 +395,18 @@ const handleEditFormChange = (e: React.ChangeEvent<HTMLInputElement>, index?: nu
 
         <TabsContent value="overview" className="space-y-4">
           <div className="grid gap-6 md:grid-cols-2">
-            <Card className="bg-white/80 backdrop-blur-sm border-slate-200/50">
+            <Card>
               <CardHeader>
-                <CardTitle className="text-slate-900">Requirements</CardTitle>
+                <CardTitle>Requirements</CardTitle>
               </CardHeader>
               <CardContent>
                 <p className="text-slate-700 whitespace-pre-wrap">{order.requirements}</p>
               </CardContent>
             </Card>
             {order.specialInstructions && (
-              <Card className="bg-white/80 backdrop-blur-sm border-slate-200/50">
+              <Card>
                 <CardHeader>
-                  <CardTitle className="text-slate-900">Special Instructions</CardTitle>
+                  <CardTitle>Special Instructions</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <p className="text-slate-700 whitespace-pre-wrap">{order.specialInstructions}</p>
@@ -384,11 +417,11 @@ const handleEditFormChange = (e: React.ChangeEvent<HTMLInputElement>, index?: nu
         </TabsContent>
 
         <TabsContent value="purchase-orders" className="space-y-4">
-          <Card className="bg-white/80 backdrop-blur-sm border-slate-200/50">
+          <Card>
             <CardHeader>
               <div className="flex items-center justify-between">
                 <div>
-                  <CardTitle className="text-slate-900">Purchase Orders</CardTitle>
+                  <CardTitle>Purchase Orders</CardTitle>
                   <CardDescription>Orders placed with suppliers</CardDescription>
                 </div>
                 <div className="flex space-x-2">
@@ -404,76 +437,103 @@ const handleEditFormChange = (e: React.ChangeEvent<HTMLInputElement>, index?: nu
               </div>
             </CardHeader>
             <CardContent>
-            {purchaseOrders.length > 0 ? (
-  purchaseOrders.map((po) => (
-    <Card key={po._id} className="border border-slate-200">
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <div>
-            <CardTitle className="text-lg">PO #{po._id}</CardTitle>
-            <CardDescription>{po.supplierName}</CardDescription>
-          </div>
-          <div className="text-right">
-            <p className="text-lg font-semibold">${po.totalAmount?.toFixed(2)}</p>
-            <Badge className={getStatusBadge(po.status)}>
-              {po.status}
-            </Badge>
-          </div>
-        </div>
-      </CardHeader>
-      <CardContent>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="w-20">Photo</TableHead>
-              <TableHead>Description</TableHead>
-              <TableHead className="w-24">Qty</TableHead>
-              <TableHead className="w-32">Unit Price</TableHead>
-              <TableHead className="w-32">Total</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {po.items?.map((item, index) => (
-              <TableRow key={index}>
-                <TableCell>
-                  <ImagePlaceholder
-                    src={item.photo}
-                    alt="Product"
-                    className="w-16 h-16 rounded"
-                    fallbackText="Product"
-                  />
-                </TableCell>
-                <TableCell>{item.description}</TableCell>
-                <TableCell>{item.quantity}</TableCell>
-                <TableCell>${item.unitPrice?.toFixed(2)}</TableCell>
-                <TableCell>${item.total?.toFixed(2)}</TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </CardContent>
-    </Card>
-  ))
-) : (
-  <div className="text-center py-8">
-    <ShoppingCart className="w-12 h-12 text-slate-400 mx-auto mb-4" />
-    <p className="text-slate-600 mb-4">No purchase orders created yet.</p>
-    <Button onClick={() => navigate(`/orders/${id}/purchase-order`)}>
-      <Plus className="w-4 h-4 mr-2" />
-      Create Purchase Order
-    </Button>
-  </div>
-)}
+              {purchaseOrders.length > 0 ? (
+                <div className="space-y-4">
+                  {purchaseOrders.map((po) => (
+                    <Card key={po._id} className="border">
+                      <CardHeader>
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <CardTitle className="text-lg">PO #{po._id}</CardTitle>
+                            <CardDescription>{po.supplierName}</CardDescription>
+                          </div>
+                          <div className="flex items-center space-x-2">
+                            <Button 
+                              variant="outline" 
+                              size="sm"
+                              onClick={() => handleEdit(po, 'purchaseOrder')}
+                            >
+                              <Edit className="w-4 h-4 mr-2" />
+                              Edit
+                            </Button>
+                            <Button variant="outline" size="sm">
+                              <Eye className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        </div>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="grid grid-cols-2 gap-4 mb-4">
+                          <div>
+                            <p className="text-sm text-slate-600">Order Date</p>
+                            <p className="font-medium">{new Date(po.orderDate).toLocaleDateString()}</p>
+                          </div>
+                          <div>
+                            <p className="text-sm text-slate-600">Expected Delivery</p>
+                            <p className="font-medium">{new Date(po.expectedDelivery).toLocaleDateString()}</p>
+                          </div>
+                        </div>
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead className="w-20">Photo</TableHead>
+                              <TableHead>Description</TableHead>
+                              <TableHead className="w-24">Qty</TableHead>
+                              <TableHead className="w-32">Unit Price</TableHead>
+                              <TableHead className="w-32">Total</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {po.items?.map((item, index) => (
+                              <TableRow key={index}>
+                                <TableCell>
+                                  <ImagePlaceholder
+                                    src={item.photo}
+                                    alt="Product"
+                                    className="w-16 h-16 rounded"
+                                    fallbackText="Product"
+                                  />
+                                </TableCell>
+                                <TableCell>{item.description}</TableCell>
+                                <TableCell>{item.quantity}</TableCell>
+                                <TableCell>${item.unitPrice?.toFixed(2)}</TableCell>
+                                <TableCell>${item.total?.toFixed(2)}</TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                        <div className="mt-4 flex justify-end">
+                          <div className="text-right space-y-2">
+                            <div className="flex justify-between font-semibold text-lg border-t pt-2">
+                              <span>Total:</span>
+                              <span>${po.totalAmount?.toFixed(2)}</span>
+                            </div>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-8">
+                  <ShoppingCart className="w-12 h-12 text-slate-400 mx-auto mb-4" />
+                  <p className="text-slate-600 mb-4">No purchase orders created yet.</p>
+                  <Button onClick={() => navigate(`/orders/${id}/purchase-order`)}>
+                    <Plus className="w-4 h-4 mr-2" />
+                    Create Purchase Order
+                  </Button>
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
 
         <TabsContent value="invoices" className="space-y-4">
-          <Card className="bg-white/80 backdrop-blur-sm border-slate-200/50">
+          <Card>
             <CardHeader>
               <div className="flex items-center justify-between">
                 <div>
-                  <CardTitle className="text-slate-900">Sales Invoices</CardTitle>
+                  <CardTitle>Sales Invoices</CardTitle>
                   <CardDescription>Invoices sent to clients</CardDescription>
                 </div>
                 <div className="flex space-x-2">
@@ -492,19 +552,20 @@ const handleEditFormChange = (e: React.ChangeEvent<HTMLInputElement>, index?: nu
               {invoices.length > 0 ? (
                 <div className="space-y-4">
                   {invoices.map((invoice) => (
-                    <Card key={invoice._id} className="border border-slate-200">
+                    <Card key={invoice._id} className="border">
                       <CardHeader>
                         <div className="flex items-center justify-between">
                           <div>
                             <CardTitle className="text-lg">Invoice #{invoice._id}</CardTitle>
                             <CardDescription>{invoice.clientName}</CardDescription>
                           </div>
-                          <div className="flex space-x-2">
+                          <div className="flex items-center space-x-2">
                             <Button 
                               variant="outline" 
                               size="sm"
-                              onClick={() => handleEditInvoice(invoice)}
+                              onClick={() => handleEdit(invoice, 'invoice')}
                             >
+                              <Edit className="w-4 h-4 mr-2" />
                               Edit
                             </Button>
                             <Button variant="outline" size="sm">
@@ -586,11 +647,11 @@ const handleEditFormChange = (e: React.ChangeEvent<HTMLInputElement>, index?: nu
         </TabsContent>
 
         <TabsContent value="shipping" className="space-y-4">
-          <Card className="bg-white/80 backdrop-blur-sm border-slate-200/50">
+          <Card>
             <CardHeader>
               <div className="flex items-center justify-between">
                 <div>
-                  <CardTitle className="text-slate-900">Shipping Information</CardTitle>
+                  <CardTitle>Shipping Information</CardTitle>
                   <CardDescription>Shipment details and tracking</CardDescription>
                 </div>
                 <div className="flex space-x-2">
@@ -609,7 +670,7 @@ const handleEditFormChange = (e: React.ChangeEvent<HTMLInputElement>, index?: nu
               {shippingInvoices.length > 0 ? (
                 <div className="space-y-4">
                   {shippingInvoices.map((shipping) => (
-                    <Card key={shipping._id} className="border border-slate-200">
+                    <Card key={shipping._id} className="border">
                       <CardHeader>
                         <div className="flex items-center justify-between">
                           <div>
@@ -617,7 +678,7 @@ const handleEditFormChange = (e: React.ChangeEvent<HTMLInputElement>, index?: nu
                             <CardDescription>{shipping.shippingCompanyName}</CardDescription>
                           </div>
                           <div className="text-right">
-                            <p className="text-lg font-semibold">${shipping.totalShippingCost.toFixed(2)}</p>
+                            <p className="text-lg font-semibold">${shipping.totalShippingCost?.toFixed(2)}</p>
                             <Badge className={getStatusBadge(shipping.status)}>
                               {shipping.status.replace('_', ' ')}
                             </Badge>
@@ -667,19 +728,19 @@ const handleEditFormChange = (e: React.ChangeEvent<HTMLInputElement>, index?: nu
                         <div className="mt-4 space-y-2 text-right">
                           <div className="flex justify-between">
                             <span>Freight Charges:</span>
-                            <span>${shipping.freightCharges.toFixed(2)}</span>
+                            <span>${shipping.freightCharges?.toFixed(2)}</span>
                           </div>
                           <div className="flex justify-between">
                             <span>Insurance:</span>
-                            <span>${shipping.insurance.toFixed(2)}</span>
+                            <span>${shipping.insurance?.toFixed(2)}</span>
                           </div>
                           <div className="flex justify-between">
                             <span>Handling Fees:</span>
-                            <span>${shipping.handlingFees.toFixed(2)}</span>
+                            <span>${shipping.handlingFees?.toFixed(2)}</span>
                           </div>
                           <div className="flex justify-between font-semibold text-lg border-t pt-2">
                             <span>Total Shipping Cost:</span>
-                            <span>${shipping.totalShippingCost.toFixed(2)}</span>
+                            <span>${shipping.totalShippingCost?.toFixed(2)}</span>
                           </div>
                         </div>
                       </CardContent>
@@ -701,17 +762,22 @@ const handleEditFormChange = (e: React.ChangeEvent<HTMLInputElement>, index?: nu
         </TabsContent>
       </Tabs>
 
-      {/* Edit Invoice Modal */}
-      {editingInvoice && (
+      {/* Edit Modal */}
+      {(editingInvoice || editingPurchaseOrder) && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
           <Card className="w-full max-w-3xl max-h-[90vh] overflow-y-auto">
             <CardHeader>
               <div className="flex items-center justify-between">
-                <CardTitle>Edit Invoice #{editingInvoice._id}</CardTitle>
+                <CardTitle>
+                  Edit {editingInvoice ? 'Invoice' : 'Purchase Order'} #{editingInvoice?._id || editingPurchaseOrder?._id}
+                </CardTitle>
                 <Button 
                   variant="ghost" 
                   size="sm" 
-                  onClick={() => setEditingInvoice(null)}
+                  onClick={() => {
+                    setEditingInvoice(null);
+                    setEditingPurchaseOrder(null);
+                  }}
                 >
                   <X className="w-4 h-4" />
                 </Button>
@@ -721,21 +787,27 @@ const handleEditFormChange = (e: React.ChangeEvent<HTMLInputElement>, index?: nu
               <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Invoice Date</label>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">
+                      {editingInvoice ? 'Invoice Date' : 'Order Date'}
+                    </label>
                     <input
                       type="date"
-                      name="invoiceDate"
-                      value={editFormData.invoiceDate?.toString().substring(0, 10) || ''}
+                      name={editingInvoice ? "invoiceDate" : "orderDate"}
+                      value={editFormData.invoiceDate?.toString().substring(0, 10) || 
+                            editFormData.orderDate?.toString().substring(0, 10) || ''}
                       onChange={handleEditFormChange}
                       className="w-full p-2 border border-slate-300 rounded"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Due Date</label>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">
+                      {editingInvoice ? 'Due Date' : 'Expected Delivery'}
+                    </label>
                     <input
                       type="date"
-                      name="dueDate"
-                      value={editFormData.dueDate?.toString().substring(0, 10) || ''}
+                      name={editingInvoice ? "dueDate" : "expectedDelivery"}
+                      value={editFormData.dueDate?.toString().substring(0, 10) || 
+                            editFormData.expectedDelivery?.toString().substring(0, 10) || ''}
                       onChange={handleEditFormChange}
                       className="w-full p-2 border border-slate-300 rounded"
                     />
@@ -751,9 +823,16 @@ const handleEditFormChange = (e: React.ChangeEvent<HTMLInputElement>, index?: nu
                     className="w-full p-2 border border-slate-300 rounded"
                   >
                     <option value="draft">Draft</option>
-                    <option value="sent">Sent</option>
-                    <option value="paid">Paid</option>
+                    <option value="pending">Pending</option>
+                    <option value="in-progress">In Progress</option>
+                    <option value="completed">Completed</option>
                     <option value="cancelled">Cancelled</option>
+                    {editingInvoice && (
+                      <>
+                        <option value="sent">Sent</option>
+                        <option value="paid">Paid</option>
+                      </>
+                    )}
                   </select>
                 </div>
 
@@ -805,6 +884,7 @@ const handleEditFormChange = (e: React.ChangeEvent<HTMLInputElement>, index?: nu
                               value={item.total}
                               onChange={(e) => handleEditFormChange(e, index)}
                               className="w-full p-2 border border-slate-300 rounded"
+                              readOnly
                             />
                           </TableCell>
                         </TableRow>
@@ -814,29 +894,40 @@ const handleEditFormChange = (e: React.ChangeEvent<HTMLInputElement>, index?: nu
                 </div>
 
                 <div className="mt-4 space-y-2 text-right">
-                  <div className="flex justify-between">
-                    <span>Subtotal:</span>
-                    <span>${editFormData.subtotal?.toFixed(2) || '0.00'}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Commission Fee ({editFormData.commissionRate}%):</span>
-                    <span>${editFormData.commissionFee?.toFixed(2) || '0.00'}</span>
-                  </div>
+                  {editingInvoice && (
+                    <>
+                      <div className="flex justify-between">
+                        <span>Subtotal:</span>
+                        <span>${editFormData.subtotal?.toFixed(2) || '0.00'}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Commission Fee ({editFormData.commissionRate}%):</span>
+                        <span>${editFormData.commissionFee?.toFixed(2) || '0.00'}</span>
+                      </div>
+                    </>
+                  )}
                   <div className="flex justify-between font-semibold text-lg border-t pt-2">
                     <span>Total:</span>
-                    <span>${editFormData.total?.toFixed(2) || '0.00'}</span>
+                    <span>
+                      ${editingInvoice 
+                        ? editFormData.total?.toFixed(2) || '0.00'
+                        : editFormData.totalAmount?.toFixed(2) || '0.00'}
+                    </span>
                   </div>
                 </div>
 
                 <div className="flex justify-end space-x-2 mt-4">
                   <Button 
                     variant="outline" 
-                    onClick={() => setEditingInvoice(null)}
+                    onClick={() => {
+                      setEditingInvoice(null);
+                      setEditingPurchaseOrder(null);
+                    }}
                   >
                     Cancel
                   </Button>
                   <Button 
-                    onClick={handleSaveInvoice}
+                    onClick={handleSave}
                     className="bg-blue-600 hover:bg-blue-700"
                   >
                     <Save className="w-4 h-4 mr-2" />

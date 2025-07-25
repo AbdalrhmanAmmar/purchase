@@ -134,56 +134,58 @@ export function CreateInvoice() {
     return { subtotal, commissionFee, total }
   }
 
-  const onSubmit = async (data: CreateInvoiceData) => {
-    if (!id || !order) return
+const onSubmit = async (data: CreateInvoiceData) => {
+  if (!id || !order || !purchaseOrders.length) return
 
-    const selectedInvoiceItems = getSelectedInvoiceItems()
-    
-    if (selectedInvoiceItems.length === 0) {
-      toast({
-        title: "Error",
-        description: "Please select at least one item for the invoice",
-        variant: "destructive",
-      })
-      return
-    }
-
-    if (!dueDate) {
-      toast({
-        title: "Error",
-        description: "Please select a due date",
-        variant: "destructive",
-      })
-      return
-    }
-
-    setLoading(true)
-    try {
-      const invoiceData = {
-        ...data,
-        orderId: id,
-        items: selectedInvoiceItems,
-        invoiceDate: invoiceDate.toISOString(),
-        dueDate: dueDate.toISOString(),
-      }
-
-      await createInvoice(invoiceData)
-      toast({
-        title: "Success",
-        description: "Sales invoice generated successfully",
-      })
-      navigate(`/orders/${id}`)
-    } catch (error) {
-      console.error('Error creating invoice:', error)
-      toast({
-        title: "Error",
-        description: "Failed to create invoice",
-        variant: "destructive",
-      })
-    } finally {
-      setLoading(false)
-    }
+  const selectedInvoiceItems = getSelectedInvoiceItems()
+  
+  if (selectedInvoiceItems.length === 0) {
+    toast({
+      title: "Error",
+      description: "Please select at least one item for the invoice",
+      variant: "destructive",
+    })
+    return
   }
+
+  if (!dueDate) {
+    toast({
+      title: "Error",
+      description: "Please select a due date",
+      variant: "destructive",
+    })
+    return
+  }
+
+  setLoading(true)
+  try {
+const invoiceData = {
+  purchaseId: purchaseOrders[0]._id,
+  dueDate: dueDate.toISOString(),
+  paymentTerms: data.paymentTerms,
+  invoiceDate: invoiceDate.toISOString(),
+  clientName: order.order.clientName,
+  clientId: order.order.clientId, // تأكد أنه موجود
+  items: selectedInvoiceItems,
+}
+
+    await createInvoice(invoiceData)
+    toast({
+      title: "Success",
+      description: "Invoice created successfully",
+    })
+    navigate(`/orders/${id}`)
+  } catch (error) {
+    console.error('Error creating invoice:', error)
+    toast({
+      title: "Error",
+      description: error instanceof Error ? error.message : "Failed to create invoice",
+      variant: "destructive",
+    })
+  } finally {
+    setLoading(false)
+  }
+}
 
   if (!order) {
     return (
@@ -231,15 +233,15 @@ export function CreateInvoice() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="space-y-2">
                 <Label>Master Order</Label>
-                <Input value={`#${order._id} - ${order.projectName}`} disabled className="bg-slate-50" />
+                <Input value={`#${order.order._id} - ${order.order.projectName}`} disabled className="bg-slate-50" />
               </div>
               <div className="space-y-2">
                 <Label>Client</Label>
-                <Input value={order.clientName} disabled className="bg-slate-50" />
+                <Input value={order.order.clientName} disabled className="bg-slate-50" />
               </div>
               <div className="space-y-2">
                 <Label>Commission Rate</Label>
-                <Input value={`${order.commissionRate}%`} disabled className="bg-slate-50" />
+                <Input value={`${order.order.commissionRate}%`} disabled className="bg-slate-50" />
               </div>
             </div>
           </CardContent>

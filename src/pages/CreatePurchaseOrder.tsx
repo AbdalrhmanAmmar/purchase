@@ -83,6 +83,7 @@ useEffect(() => {
         ])
 
         setOrder(orderResponse.order)
+        console.log(orderResponse.order.order.clientName)
         setSuppliers(suppliersResponse.suppliers)
         console.log('Data loaded successfully')
       } catch (error) {
@@ -405,11 +406,11 @@ const PhotoUpload = ({
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Master Order</Label>
-                <Input value={`#${order._id} - ${order.projectName}`} disabled className="bg-slate-50" />
+                <Input value={`#${order.order._id} - ${order.order.projectName}`} disabled className="bg-slate-50" />
               </div>
               <div className="space-y-2">
                 <Label>Client</Label>
-                <Input value={order.clientName} disabled className="bg-slate-50" />
+                <Input value={order?.order?.clientName} disabled className="bg-slate-50" />
               </div>
             </div>
 

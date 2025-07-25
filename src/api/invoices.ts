@@ -79,57 +79,45 @@ export const getInvoicesByOrderId = (orderId: string) => {
 // Endpoint: POST /api/invoices
 // Request: CreateInvoiceData
 // Response: { invoice: Invoice, message: string }
-export const createInvoice = (data: CreateInvoiceData) => {
-  // Mocking the response
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      // Ensure all numeric values are properly converted
-      const processedItems = data.items.map(item => ({
-        ...item,
-        quantity: Number(item.quantity) || 0,
-        unitPrice: Number(item.unitPrice) || 0,
-        total: Number(item.total) || 0
-      }));
+export const createInvoice = async (data: CreateInvoiceData) => {
+  try {
+    const response = await fetch('/api/invoices', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        purchaseId: data.purchaseId,
+        dueDate: data.dueDate,
+        paymentTerms: data.paymentTerms,
+        clientId: data.clientId,
+        clientName: data.clientName,
+        items: data.items.map(item => ({
+          itemCode: item.itemCode, // تأكد من إرسال كل الحقول المطلوبة
+          description: item.description,
+          quantity: item.quantity,
+          unitPrice: item.unitPrice,
+          photo: item.photo // إذا كان مطلوبًا
+        }))
+      }),
+    });
 
-      const subtotal = processedItems.reduce((sum, item) => sum + Number(item.total), 0);
-      const commissionRate = 5.5; // This should come from the order
-      const commissionFee = subtotal * (commissionRate / 100);
-      const total = subtotal + commissionFee;
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(
+        errorData.message || `Server error ${response.status}`
+      );
+    }
 
-      const newInvoice = {
-        _id: Date.now().toString(),
-        ...data,
-        items: processedItems,
-        clientId: '1',
-        clientName: 'Acme Corporation',
-        subtotal,
-        commissionFee,
-        commissionRate,
-        total,
-        status: 'draft',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      };
-
-      // Store the invoice in localStorage for the specific order
-      const existingInvoices = localStorage.getItem(`invoices_${data.orderId}`)
-      const invoices = existingInvoices ? JSON.parse(existingInvoices) : []
-      invoices.push(newInvoice)
-      localStorage.setItem(`invoices_${data.orderId}`, JSON.stringify(invoices))
-
-      resolve({
-        invoice: newInvoice,
-        message: 'Invoice created successfully'
-      });
-    }, 500);
-  });
-  // Uncomment the below lines to make an actual API call
-  // try {
-  //   return await api.post('/api/invoices', data);
-  // } catch (error) {
-  //   throw new Error(error?.response?.data?.message || error.message);
-  // }
+    return await response.json();
+  } catch (error) {
+    console.error('Error in createInvoice:', error);
+    throw error;
+  }
 };
+
+
+
 
 export const updateInvoice = (orderId: string, invoiceId: string, updatedData: Partial<Invoice>) => {
   return new Promise((resolve, reject) => {

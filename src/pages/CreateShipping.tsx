@@ -10,7 +10,6 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
-import { createShippingInvoice, CreateShippingInvoiceData, getShippingCompanies, createShippingCompany, ShippingCompany, CreateShippingCompanyData, ShippingItem } from "@/api/shipping"
 import { getOrderById, Order } from "@/api/orders"
 import { getInvoicesByOrderId, Invoice } from "@/api/invoices"
 import { ImagePlaceholder } from "@/components/ImagePlaceholder"
@@ -63,6 +62,8 @@ export function CreateShipping() {
           getInvoicesByOrderId(id) as Promise<{ invoices: Invoice[] }>,
           getShippingCompanies() as Promise<{ companies: ShippingCompany[] }>
         ])
+
+        console.log(orderResponse.order)
 
         setOrder(orderResponse.order)
         setInvoices(invoicesResponse.invoices || [])

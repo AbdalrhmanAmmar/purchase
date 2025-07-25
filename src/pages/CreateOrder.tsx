@@ -53,6 +53,11 @@ export function CreateOrder() {
   }, [toast])
 
   const onSubmit = async (data: CreateOrderData) => {
+console.log("🚀 Submitting form");
+console.log("✅ selectedClient:", selectedClient);
+console.log("✅ All clients:", clients);
+console.log("✅ Found client in list?", clients.some(c => c._id === selectedClient));
+
     if (!selectedClient) {
       toast({
         title: "Error",
