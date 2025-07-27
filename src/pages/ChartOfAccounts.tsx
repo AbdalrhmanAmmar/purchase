@@ -189,6 +189,18 @@ export function ChartOfAccounts() {
                 )}
               </div>
               <div className="space-y-2">
+                <Label htmlFor="balance">Balance *</Label>
+                <Input
+                  {...register('balance', { required: 'Balance is required' })}
+                  placeholder="Enter account balance"
+                  type="number"
+                />
+                {errors.balance && (
+                  <p className="text-sm text-red-600">{errors.balance.message}</p>
+                )}
+              </div>
+    
+              <div className="space-y-2">
                 <Label htmlFor="description">Description</Label>
                 <Textarea
                   {...register('description')}

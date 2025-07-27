@@ -10,8 +10,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Checkbox } from "@/components/ui/checkbox"
 import { createInvoice, CreateInvoiceData, InvoiceItem } from "@/api/invoices"
-import { getOrderById, Order } from "@/api/orders"
-import { PurchaseOrder } from "@/api/purchaseOrders"
+import { getPurchaseOrdersByOrderId, PurchaseOrder } from "@/api/purchaseOrders"
 import { ImagePlaceholder } from "@/components/ImagePlaceholder"
 import { useToast } from "@/hooks/useToast"
 import { useNavigate, useParams } from "react-router-dom"
@@ -20,9 +19,8 @@ import { format } from "date-fns"
 import { cn } from "@/lib/utils"
 
 export function CreateInvoice() {
-  const { id } = useParams<{ id: string }>()
-  const [order, setOrder] = useState<Order | null>(null)
-  const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([])
+  const { id: purchaseOrderId } = useParams<{ id: string }>()
+  const [purchaseOrder, setPurchaseOrder] = useState<PurchaseOrder | null>(null)
   const [selectedItems, setSelectedItems] = useState<{ [key: string]: boolean }>({})
   const [itemQuantities, setItemQuantities] = useState<{ [key: string]: number }>({})
   const [itemPrices, setItemPrices] = useState<{ [key: string]: number }>({})
@@ -38,55 +36,51 @@ export function CreateInvoice() {
     }
   })
 
-  useEffect(() => {
-    const fetchData = async () => {
-      if (!id) return
+useEffect(() => {
+  const fetchPurchaseOrder = async () => {
+    if (!purchaseOrderId) return
 
-      try {
-        console.log('Fetching order and purchase orders for invoice creation...')
-        const response = await getOrderById(id)
-        
-        console.log('Order:', response.order)
-        console.log('Purchase Orders:', response.order.purchaseOrders)
+    try {
+      console.log('Fetching purchase order for invoice creation...')
+      const response = await getPurchaseOrdersByOrderId(purchaseOrderId)
+      
+      console.log('Purchase Order Response:', response)
 
-        if (!response.order) {
-          throw new Error('Order not found')
-        }
-
-        setOrder(response.order)
-        setPurchaseOrders(response.order.purchaseOrders || [])
-        
-        // Initialize quantities and prices
-        const initialQuantities: { [key: string]: number } = {}
-        const initialPrices: { [key: string]: number } = {}
-        const initialSelected: { [key: string]: boolean } = {}
-        
-        response.purchaseOrders?.forEach(po => {
-          po.items?.forEach(item => {
-            const key = `${po._id}_${item._id}`
-            initialQuantities[key] = item.quantity
-            initialPrices[key] = item.unitPrice
-            initialSelected[key] = true // Select all items by default
-          })
-        })
-        
-        setItemQuantities(initialQuantities)
-        setItemPrices(initialPrices)
-        setSelectedItems(initialSelected)
-        
-      } catch (error) {
-        console.error('Error fetching data:', error)
-        toast({
-          title: "Error",
-          description: "Failed to load order data",
-          variant: "destructive",
-        })
-        navigate(`/orders/${id}`)
+      if (!response.purchaseOrder) {
+        throw new Error('Purchase order not found')
       }
-    }
 
-    fetchData()
-  }, [id, toast, navigate])
+      setPurchaseOrder(response.purchaseOrder)
+      
+      // Initialize quantities, prices and selection
+      const initialQuantities: { [key: string]: number } = {}
+      const initialPrices: { [key: string]: number } = {}
+      const initialSelected: { [key: string]: boolean } = {}
+      
+      response.purchaseOrder.items?.forEach(item => {
+        const key = item._id || Math.random().toString()
+        initialQuantities[key] = item.quantity
+        initialPrices[key] = item.unitPrice
+        initialSelected[key] = true // Select all items by default
+      })
+      
+      setItemQuantities(initialQuantities)
+      setItemPrices(initialPrices)
+      setSelectedItems(initialSelected)
+      
+    } catch (error) {
+      console.error('Error fetching purchase order:', error)
+      toast({
+        title: "Error",
+        description: "Failed to load purchase order data",
+        variant: "destructive",
+      })
+      navigate(-1)
+    }
+  }
+
+  fetchPurchaseOrder()
+}, [purchaseOrderId, toast, navigate])
 
   const handleItemSelection = (key: string, checked: boolean) => {
     setSelectedItems(prev => ({ ...prev, [key]: checked }))
@@ -101,93 +95,92 @@ export function CreateInvoice() {
   }
 
   const getSelectedInvoiceItems = (): InvoiceItem[] => {
-    const items: InvoiceItem[] = []
+    if (!purchaseOrder?.items) return []
     
-    purchaseOrders.forEach(po => {
-      po.items?.forEach(item => {
-        const key = `${po._id}_${item._id}`
-        if (selectedItems[key]) {
-          const quantity = itemQuantities[key] || item.quantity
-          const unitPrice = itemPrices[key] || item.unitPrice
-          items.push({
-            _id: item._id,
-            itemCode: item.itemCode,
-            description: item.description,
-            quantity,
-            unitPrice,
-            total: quantity * unitPrice,
-            photo: item.photo
-          })
+    return purchaseOrder.items
+      .filter(item => {
+        const key = item._id || Math.random().toString()
+        return selectedItems[key]
+      })
+      .map(item => {
+        const key = item._id || Math.random().toString()
+        const quantity = itemQuantities[key] || item.quantity
+        const unitPrice = itemPrices[key] || item.unitPrice
+        
+        return {
+          _id: item._id,
+          itemCode: item.itemCode,
+          description: item.description,
+          quantity,
+          unitPrice,
+          total: quantity * unitPrice,
+          photo: item.photo
         }
       })
-    })
-    
-    return items
   }
 
   const calculateTotals = () => {
     const items = getSelectedInvoiceItems()
     const subtotal = items.reduce((sum, item) => sum + item.total, 0)
-    const commissionFee = subtotal * ((order?.commissionRate || 0) / 100)
+    const commissionRate = purchaseOrder?.commissionRate || 5
+    const commissionFee = subtotal * (commissionRate / 100)
     const total = subtotal + commissionFee
     
-    return { subtotal, commissionFee, total }
+    return { subtotal, commissionFee, total, commissionRate }
   }
 
-const onSubmit = async (data: CreateInvoiceData) => {
-  if (!id || !order || !purchaseOrders.length) return
+  const onSubmit = async (data: CreateInvoiceData) => {
+    if (!purchaseOrderId || !purchaseOrder) return
 
-  const selectedInvoiceItems = getSelectedInvoiceItems()
-  
-  if (selectedInvoiceItems.length === 0) {
-    toast({
-      title: "Error",
-      description: "Please select at least one item for the invoice",
-      variant: "destructive",
-    })
-    return
+    const selectedInvoiceItems = getSelectedInvoiceItems()
+    
+    if (selectedInvoiceItems.length === 0) {
+      toast({
+        title: "Error",
+        description: "Please select at least one item for the invoice",
+        variant: "destructive",
+      })
+      return
+    }
+
+    if (!dueDate) {
+      toast({
+        title: "Error",
+        description: "Please select a due date",
+        variant: "destructive",
+      })
+      return
+    }
+
+    setLoading(true)
+    try {
+      const invoiceData: CreateInvoiceData = {
+        purchaseId: purchaseOrderId,
+        dueDate: dueDate.toISOString(),
+        paymentTerms: data.paymentTerms,
+        items: selectedInvoiceItems,
+        commissionRate: purchaseOrder.commissionRate
+      }
+
+      await createInvoice(invoiceData)
+      toast({
+        title: "Success",
+        description: "Invoice created successfully",
+      })
+      navigate(`/purchase-orders/${purchaseOrderId}`)
+    } catch (error: any) {
+      console.error('Error creating invoice:', error)
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to create invoice",
+        variant: "destructive",
+      })
+    } finally {
+      setLoading(false)
+    }
   }
 
-  if (!dueDate) {
-    toast({
-      title: "Error",
-      description: "Please select a due date",
-      variant: "destructive",
-    })
-    return
-  }
-
-  setLoading(true)
-  try {
-const invoiceData = {
-  purchaseId: purchaseOrders[0]._id,
-  dueDate: dueDate.toISOString(),
-  paymentTerms: data.paymentTerms,
-  invoiceDate: invoiceDate.toISOString(),
-  clientName: order.order.clientName,
-  clientId: order.order.clientId, // تأكد أنه موجود
-  items: selectedInvoiceItems,
-}
-
-    await createInvoice(invoiceData)
-    toast({
-      title: "Success",
-      description: "Invoice created successfully",
-    })
-    navigate(`/orders/${id}`)
-  } catch (error) {
-    console.error('Error creating invoice:', error)
-    toast({
-      title: "Error",
-      description: error instanceof Error ? error.message : "Failed to create invoice",
-      variant: "destructive",
-    })
-  } finally {
-    setLoading(false)
-  }
-}
-
-  if (!order) {
+  if (!purchaseOrder) {
     return (
       <div className="space-y-6">
         <div className="flex items-center space-x-4">
@@ -207,23 +200,23 @@ const invoiceData = {
     )
   }
 
-  const { subtotal, commissionFee, total } = calculateTotals()
+  const { subtotal, commissionFee, total, commissionRate } = calculateTotals()
 
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center space-x-4">
-        <Button variant="ghost" onClick={() => navigate(`/orders/${id}`)} className="p-2">
+        <Button variant="ghost" onClick={() => navigate(-1)} className="p-2">
           <ArrowLeft className="w-4 h-4" />
         </Button>
         <div>
           <h1 className="text-3xl font-bold text-slate-900 dark:text-white">Generate Sales Invoice</h1>
-          <p className="text-slate-600 dark:text-slate-400">Order #{id} - {order.projectName}</p>
+          <p className="text-slate-600 dark:text-slate-400">Purchase Order #{purchaseOrderId}</p>
         </div>
       </div>
 
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-        {/* Order Information */}
+        {/* Purchase Order Information */}
         <Card className="bg-white/80 backdrop-blur-sm border-slate-200/50">
           <CardHeader>
             <CardTitle className="text-slate-900">Invoice Information</CardTitle>
@@ -232,29 +225,29 @@ const invoiceData = {
           <CardContent className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="space-y-2">
-                <Label>Master Order</Label>
-                <Input value={`#${order.order._id} - ${order.order.projectName}`} disabled className="bg-slate-50" />
+                <Label>Purchase Order</Label>
+                <Input value={`#${purchaseOrder._id}`} disabled className="bg-slate-50" />
               </div>
               <div className="space-y-2">
-                <Label>Client</Label>
-                <Input value={order.order.clientName} disabled className="bg-slate-50" />
+                <Label>Supplier</Label>
+                <Input value={purchaseOrder.supplierName} disabled className="bg-slate-50" />
               </div>
               <div className="space-y-2">
                 <Label>Commission Rate</Label>
-                <Input value={`${order.order.commissionRate}%`} disabled className="bg-slate-50" />
+                <Input value={`${commissionRate}%`} disabled className="bg-slate-50" />
               </div>
             </div>
           </CardContent>
         </Card>
 
-        {/* Items from Purchase Orders */}
+        {/* Items from Purchase Order */}
         <Card className="bg-white/80 backdrop-blur-sm border-slate-200/50">
           <CardHeader>
-            <CardTitle className="text-slate-900">Items from Purchase Orders</CardTitle>
+            <CardTitle className="text-slate-900">Items from Purchase Order</CardTitle>
             <CardDescription>Select and modify items to include in the sales invoice</CardDescription>
           </CardHeader>
           <CardContent>
-            {purchaseOrders && purchaseOrders.length > 0 ? (
+            {purchaseOrder.items && purchaseOrder.items.length > 0 ? (
               <div className="overflow-x-auto">
                 <Table>
                   <TableHeader>
@@ -269,65 +262,60 @@ const invoiceData = {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {purchaseOrders.map(po => 
-                      po.items?.map((item, itemIndex) => {
-                        const key = `${po._id}_${item._id || itemIndex}`
-                        const quantity = itemQuantities[key] || item.quantity
-                        const sellPrice = itemPrices[key] || item.unitPrice
-                        const itemTotal = quantity * sellPrice
-                        
-                        return (
-                          <TableRow key={key}>
-                            <TableCell>
-                              <Checkbox
-                                checked={selectedItems[key] || false}
-                                onCheckedChange={(checked) => handleItemSelection(key, checked as boolean)}
-                              />
-                            </TableCell>
-                            <TableCell>
-                              <ImagePlaceholder
-                                src={item.photo}
-                                alt="Product"
-                                className="w-16 h-16 rounded"
-                                fallbackText="Product"
-                              />
-                            </TableCell>
-                            <TableCell>{item.description}</TableCell>
-                            <TableCell>
-                              <Input
-                                type="number"
-                                min="1"
-                                value={quantity}
-                                onChange={(e) => handleQuantityChange(key, parseInt(e.target.value) || 0)}
-                                className="w-20"
-                              />
-                            </TableCell>
-                            <TableCell>${item.unitPrice.toFixed(2)}</TableCell>
-                            <TableCell>
-                              <Input
-                                type="number"
-                                step="0.01"
-                                min="0"
-                                value={sellPrice}
-                                onChange={(e) => handlePriceChange(key, parseFloat(e.target.value) || 0)}
-                                className="w-24"
-                              />
-                            </TableCell>
-                            <TableCell>${itemTotal.toFixed(2)}</TableCell>
-                          </TableRow>
-                        )
-                      })
-                    )}
+                    {purchaseOrder.items.map((item, itemIndex) => {
+                      const key = item._id || `item-${itemIndex}`
+                      const quantity = itemQuantities[key] || item.quantity
+                      const sellPrice = itemPrices[key] || item.unitPrice
+                      const itemTotal = quantity * sellPrice
+                      
+                      return (
+                        <TableRow key={key}>
+                          <TableCell>
+                            <Checkbox
+                              checked={selectedItems[key] || false}
+                              onCheckedChange={(checked) => handleItemSelection(key, checked as boolean)}
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <ImagePlaceholder
+                              src={item.photo}
+                              alt="Product"
+                              className="w-16 h-16 rounded"
+                              fallbackText="Product"
+                            />
+                          </TableCell>
+                          <TableCell>{item.description}</TableCell>
+                          <TableCell>
+                            <Input
+                              type="number"
+                              min="1"
+                              value={quantity}
+                              onChange={(e) => handleQuantityChange(key, parseInt(e.target.value) || 0)}
+                              className="w-20"
+                            />
+                          </TableCell>
+                          <TableCell>${item.unitPrice.toFixed(2)}</TableCell>
+                          <TableCell>
+                            <Input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              value={sellPrice}
+                              onChange={(e) => handlePriceChange(key, parseFloat(e.target.value) || 0)}
+                              className="w-24"
+                            />
+                          </TableCell>
+                          <TableCell>${itemTotal.toFixed(2)}</TableCell>
+                        </TableRow>
+                      )
+                    })}
                   </TableBody>
                 </Table>
               </div>
             ) : (
               <div className="text-center py-8">
                 <FileText className="w-12 h-12 text-slate-400 mx-auto mb-4" />
-                <p className="text-slate-600 mb-4">No purchase orders found for this order.</p>
-                <Button onClick={() => navigate(`/orders/${id}/purchase-order`)} variant="outline">
-                  Create Purchase Order
-                </Button>
+                <p className="text-slate-600 mb-4">No items found in this purchase order.</p>
               </div>
             )}
           </CardContent>
@@ -419,7 +407,7 @@ const invoiceData = {
                     <span className="font-medium">${subtotal.toFixed(2)}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-slate-600">Commission Fee ({order.commissionRate}%):</span>
+                    <span className="text-slate-600">Commission Fee ({commissionRate}%):</span>
                     <span className="font-medium">${commissionFee.toFixed(2)}</span>
                   </div>
                   <div className="flex justify-between text-lg font-semibold border-t pt-2">
@@ -434,12 +422,12 @@ const invoiceData = {
 
         {/* Actions */}
         <div className="flex justify-end space-x-4">
-          <Button type="button" variant="outline" onClick={() => navigate(`/orders/${id}`)}>
+          <Button type="button" variant="outline" onClick={() => navigate(-1)}>
             Cancel
           </Button>
           <Button
             type="submit"
-            disabled={loading || purchaseOrders.length === 0}
+            disabled={loading || !purchaseOrder.items?.length}
             className="bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700"
           >
             <Save className="w-4 h-4 mr-2" />

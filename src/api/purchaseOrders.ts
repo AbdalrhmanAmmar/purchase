@@ -70,36 +70,25 @@ export const getPurchaseOrdersByOrderId = async (orderId: string) => {
   try {
     const response = await api.get(`/api/orders/${orderId}/purchase-orders`);
     
-    console.log('Raw API Response:', response); // لفحص هيكل البيانات الكامل
+    console.log('Raw API Response:', response.data); // Log the actual response
     
-    // استخراج البيانات بناءً على الهيكل الذي رأيناه في الكونسول
-    let purchaseOrders = [];
+    // The response seems to be the purchase order object directly
+    const purchaseOrder = response.data;
     
-    if (response.data?.data?.purchaseOrders) {
-      // الهيكل الذي ظهر في الكونسول: data -> data -> purchaseOrders
-      purchaseOrders = response.data.data.purchaseOrders;
-    } else if (Array.isArray(response.data?.purchaseOrders)) {
-      // إذا كانت purchaseOrders مباشرة في data
-      purchaseOrders = response.data.purchaseOrders;
-    } else if (Array.isArray(response.data)) {
-      // إذا كانت البيانات مصفوفة مباشرة
-      purchaseOrders = response.data;
-    } else if (response.data) {
-      // إذا كانت البيانات كائن مفرد
-      purchaseOrders = [response.data];
+    if (!purchaseOrder) {
+      throw new Error('Purchase order not found');
     }
     
     return { 
       success: true,
-      purchaseOrders: purchaseOrders || [] // تأكد من عدم إرجاع undefined
+      purchaseOrder // Return the single purchase order object
     };
     
   } catch (error: any) {
-    console.error('Error fetching purchase orders:', error);
-    throw new Error(error?.response?.data?.message || error.message || 'Failed to fetch purchase orders');
+    console.error('Error fetching purchase order:', error);
+    throw new Error(error?.response?.data?.message || error.message || 'Failed to fetch purchase order');
   }
 };
-
 // Description: Get all purchase orders with pagination and filtering
 // Endpoint: GET /api/purchase-orders
 // Request: { page?: number, limit?: number, status?: string, supplierId?: string, orderId?: string }

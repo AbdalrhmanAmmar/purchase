@@ -12,9 +12,7 @@ export interface InvoiceItem {
 
 export interface Invoice {
   _id: string;
-  orderId: string;
-  clientId: string;
-  clientName: string;
+  purchaseId: string;
   items: InvoiceItem[];
   subtotal: number;
   commissionFee: number;
@@ -23,147 +21,89 @@ export interface Invoice {
   invoiceDate: string;
   dueDate: string;
   paymentTerms: string;
-  status: 'draft' | 'sent' | 'paid' | 'overdue';
+  status: 'draft' | 'sent' | 'paid' | 'overdue' | 'partially_paid' | 'cancelled';
+  amountPaid?: number;
   createdAt: string;
   updatedAt: string;
 }
 
 export interface CreateInvoiceData {
-  orderId: string;
+  purchaseId: string;
   items: InvoiceItem[];
-  invoiceDate: string;
   dueDate: string;
-  paymentTerms: string;
+  paymentTerms?: string;
+  commissionRate?: number;
 }
 
-// Description: Get invoices for an order
-// Endpoint: GET /api/orders/:orderId/invoices
-// Request: {}
-// Response: { invoices: Invoice[] }
-export const getInvoicesByOrderId = (orderId: string) => {
-  // Mocking the response
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      const storedInvoices = localStorage.getItem(`invoices_${orderId}`)
-      let invoices = storedInvoices ? JSON.parse(storedInvoices) : []
-
-      // Process invoices to ensure numeric values
-      invoices = invoices.map((invoice: any) => ({
-        ...invoice,
-        items: invoice.items.map((item: any) => ({
-          ...item,
-          quantity: Number(item.quantity) || 0,
-          unitPrice: Number(item.unitPrice) || 0,
-          total: Number(item.total) || 0
-        })),
-        subtotal: Number(invoice.subtotal) || 0,
-        commissionFee: Number(invoice.commissionFee) || 0,
-        commissionRate: Number(invoice.commissionRate) || 0,
-        total: Number(invoice.total) || 0
-      }))
-
-      resolve({
-        invoices
-      });
-    }, 500);
-  });
-  // Uncomment the below lines to make an actual API call
-  // try {
-  //   return await api.get(`/api/orders/${orderId}/invoices`);
-  // } catch (error) {
-  //   throw new Error(error?.response?.data?.message || error.message);
-  // }
+// Description: Get invoices for a purchase order
+// Endpoint: GET /api/purchase-orders/:purchaseId/invoices
+export const getInvoicesByPurchaseId = async (purchaseId: string) => {
+  try {
+    const response = await api.get(`/api/purchase-orders/${purchaseId}/invoices`);
+    return response.data;
+  } catch (error: any) {
+    throw new Error(error?.response?.data?.message || error.message);
+  }
 };
 
 // Description: Create a new invoice
 // Endpoint: POST /api/invoices
-// Request: CreateInvoiceData
-// Response: { invoice: Invoice, message: string }
 export const createInvoice = async (data: CreateInvoiceData) => {
   try {
-    const response = await fetch('/api/invoices', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        purchaseId: data.purchaseId,
-        dueDate: data.dueDate,
-        paymentTerms: data.paymentTerms,
-        clientId: data.clientId,
-        clientName: data.clientName,
-        items: data.items.map(item => ({
-          itemCode: item.itemCode, // تأكد من إرسال كل الحقول المطلوبة
-          description: item.description,
-          quantity: item.quantity,
-          unitPrice: item.unitPrice,
-          photo: item.photo // إذا كان مطلوبًا
-        }))
-      }),
+    // Calculate item totals
+    const itemsWithTotals = data.items.map(item => ({
+      ...item,
+      total: item.quantity * item.unitPrice
+    }));
+
+    const response = await api.post('/api/invoices', {
+      purchaseId: data.purchaseId,
+      dueDate: data.dueDate,
+      paymentTerms: data.paymentTerms || 'Net 30',
+      items: itemsWithTotals,
+      commissionRate: data.commissionRate
     });
 
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(
-        errorData.message || `Server error ${response.status}`
-      );
-    }
-
-    return await response.json();
-  } catch (error) {
-    console.error('Error in createInvoice:', error);
-    throw error;
+    return response.data;
+  } catch (error: any) {
+    throw new Error(error?.response?.data?.message || error.message);
   }
 };
 
-
-
-
-export const updateInvoice = (orderId: string, invoiceId: string, updatedData: Partial<Invoice>) => {
-  return new Promise((resolve, reject) => {
-    setTimeout(() => {
-      const storedInvoices = localStorage.getItem(`invoices_${orderId}`);
-      if (!storedInvoices) return reject(new Error("No invoices found for this order"));
-
-      let invoices: Invoice[] = JSON.parse(storedInvoices);
-
-      const index = invoices.findIndex(inv => inv._id === invoiceId);
-      if (index === -1) return reject(new Error("Invoice not found"));
-
-      const oldInvoice = invoices[index];
-      const updatedItems = updatedData.items || oldInvoice.items;
-
-      // Recalculate totals if items changed
-      const processedItems = updatedItems.map(item => ({
+// Description: Update an existing invoice
+// Endpoint: PATCH /api/invoices/:invoiceId
+export const updateInvoice = async (
+  invoiceId: string,
+  updatedData: Partial<Invoice>
+) => {
+  try {
+    // Recalculate if items are being updated
+    let itemsWithTotals = updatedData.items;
+    if (updatedData.items) {
+      itemsWithTotals = updatedData.items.map(item => ({
         ...item,
-        quantity: Number(item.quantity) || 0,
-        unitPrice: Number(item.unitPrice) || 0,
-        total: Number(item.total) || 0,
+        total: item.quantity * item.unitPrice
       }));
+    }
 
-      const subtotal = processedItems.reduce((sum, item) => sum + item.total, 0);
-      const commissionRate = oldInvoice.commissionRate || 5.5;
-      const commissionFee = subtotal * (commissionRate / 100);
-      const total = subtotal + commissionFee;
+    const response = await api.patch(`/api/invoices/${invoiceId}`, {
+      ...updatedData,
+      ...(itemsWithTotals && { items: itemsWithTotals })
+    });
 
-      const updatedInvoice: Invoice = {
-        ...oldInvoice,
-        ...updatedData,
-        items: processedItems,
-        subtotal,
-        commissionFee,
-        commissionRate,
-        total,
-        updatedAt: new Date().toISOString()
-      };
+    return response.data;
+  } catch (error: any) {
+    throw new Error(error?.response?.data?.message || error.message);
+  }
+};
 
-      invoices[index] = updatedInvoice;
-      localStorage.setItem(`invoices_${orderId}`, JSON.stringify(invoices));
-
-      resolve({
-        invoice: updatedInvoice,
-        message: "Invoice updated successfully"
-      });
-    }, 500);
-  });
+// Description: Delete an invoice
+// Endpoint: DELETE /api/invoices/:invoiceId
+export const deleteInvoice = async (invoiceId: string) => {
+  try {
+    const response = await api.delete(`/api/invoices/${invoiceId}`);
+    return response.data;
+  } catch (error: any) {
+    throw new Error(error?.response?.data?.message || error.message);
+  }
 };

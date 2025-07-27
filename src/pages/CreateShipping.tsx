@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { getOrderById, Order } from "@/api/orders"
-import { getInvoicesByOrderId, Invoice } from "@/api/invoices"
+import { getInvoicesByPurchaseId, Invoice } from "@/api/invoices"
 import { ImagePlaceholder } from "@/components/ImagePlaceholder"
 import { useToast } from "@/hooks/useToast"
 import { useNavigate, useParams } from "react-router-dom"
@@ -59,7 +59,7 @@ export function CreateShipping() {
         console.log('Fetching order, invoices, and shipping companies for shipping creation...')
         const [orderResponse, invoicesResponse, companiesResponse] = await Promise.all([
           getOrderById(id) as Promise<{ order: Order }>,
-          getInvoicesByOrderId(id) as Promise<{ invoices: Invoice[] }>,
+          getInvoicesByPurchaseId(id) as Promise<{ invoices: Invoice[] }>,
           getShippingCompanies() as Promise<{ companies: ShippingCompany[] }>
         ])
 

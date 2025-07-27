@@ -63,20 +63,19 @@ export const getArchivedOrders = async (params?: { page?: number; limit?: number
   }
 };
 
-// Description: Get order by ID with purchase orders
-// Endpoint: GET /api/orders/:id
-// Request: {}
-// Response: { success: boolean, data: { order: Order } }
+
 export const getOrderById = async (id: string) => {
   try {
     const response = await api.get(`/api/orders/${id}`);
-
-    // Get stored purchase orders for this order from localStorage (for now)
-    const storedPOs = localStorage.getItem(`purchaseOrders_${id}`)
-    let purchaseOrders = storedPOs ? JSON.parse(storedPOs) : []
-
-    // Process purchase orders to ensure numeric values
-    purchaseOrders = purchaseOrders.map((po: any) => ({
+    console.log('Full response:', response);
+    
+    // استخراج البيانات من الهيكل المتداخل
+    const serverData = response.data.data.order; // هنا يتم الوصول إلى data.order
+    const order = serverData.order; // ثم serverData.order للحصول على بيانات الطلب الفعلية
+    const purchaseOrders = serverData.purchaseOrders || [];
+    
+    // معالجة البيانات...
+    const processedPurchaseOrders = purchaseOrders.map((po: any) => ({
       ...po,
       items: po.items.map((item: any) => ({
         ...item,
@@ -85,21 +84,20 @@ export const getOrderById = async (id: string) => {
         total: Number(item.total) || 0
       })),
       totalAmount: Number(po.totalAmount) || 0
-    }))
+    }));
 
     return {
-      order: response.data.data.order,
-      purchaseOrders
+      data: {
+        order,
+        purchaseOrders: processedPurchaseOrders
+      }
     };
   } catch (error: any) {
+    console.error('Error fetching order:', error);
     throw new Error(error?.response?.data?.message || error.message);
   }
 };
 
-// Description: Create a new order
-// Endpoint: POST /api/orders
-// Request: CreateOrderData
-// Response: { success: boolean, data: { order: Order }, message: string }
 export const createOrder = async (data: CreateOrderData) => {
   try {
     const response = await api.post('/api/orders', data);

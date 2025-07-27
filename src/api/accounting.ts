@@ -39,6 +39,7 @@ export interface CreateAccountData {
   accountNumber: string;
   accountName: string;
   accountType: 'asset' | 'liability' | 'equity' | 'revenue' | 'expense';
+  balance?: number;
   description?: string;
 }
 
@@ -88,117 +89,40 @@ export interface FinancialStatement {
 // Endpoint: GET /api/accounting/accounts
 // Request: {}
 // Response: { accounts: Account[] }
-export const getAccounts = () => {
-  // Mocking the response
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      resolve({
-        accounts: [
-          {
-            _id: '1',
-            accountNumber: '1000',
-            accountName: 'Cash',
-            accountType: 'asset',
-            balance: 50000,
-            description: 'Company cash account',
-            isActive: true,
-            createdAt: '2024-01-01T10:00:00Z',
-            updatedAt: '2024-01-01T10:00:00Z'
-          },
-          {
-            _id: '2',
-            accountNumber: '1200',
-            accountName: 'Accounts Receivable',
-            accountType: 'asset',
-            balance: 25000,
-            description: 'Money owed by customers',
-            isActive: true,
-            createdAt: '2024-01-01T10:00:00Z',
-            updatedAt: '2024-01-01T10:00:00Z'
-          },
-          {
-            _id: '3',
-            accountNumber: '2000',
-            accountName: 'Accounts Payable',
-            accountType: 'liability',
-            balance: 15000,
-            description: 'Money owed to suppliers',
-            isActive: true,
-            createdAt: '2024-01-01T10:00:00Z',
-            updatedAt: '2024-01-01T10:00:00Z'
-          },
-          {
-            _id: '4',
-            accountNumber: '3000',
-            accountName: 'Owner Equity',
-            accountType: 'equity',
-            balance: 60000,
-            description: 'Owner investment',
-            isActive: true,
-            createdAt: '2024-01-01T10:00:00Z',
-            updatedAt: '2024-01-01T10:00:00Z'
-          },
-          {
-            _id: '5',
-            accountNumber: '4000',
-            accountName: 'Commission Revenue',
-            accountType: 'revenue',
-            balance: 45000,
-            description: 'Revenue from commissions',
-            isActive: true,
-            createdAt: '2024-01-01T10:00:00Z',
-            updatedAt: '2024-01-01T10:00:00Z'
-          },
-          {
-            _id: '6',
-            accountNumber: '5000',
-            accountName: 'Operating Expenses',
-            accountType: 'expense',
-            balance: 12000,
-            description: 'General operating expenses',
-            isActive: true,
-            createdAt: '2024-01-01T10:00:00Z',
-            updatedAt: '2024-01-01T10:00:00Z'
-          }
-        ]
-      });
-    }, 500);
-  });
-  // Uncomment the below lines to make an actual API call
-  // try {
-  //   return await api.get('/api/accounting/accounts');
-  // } catch (error) {
-  //   throw new Error(error?.response?.data?.message || error.message);
-  // }
+export const getAccounts = async (): Promise<{ accounts: Account[] }> => {
+  try {
+    const response = await api.get('/api/accounts');
+    return {
+      accounts: response.data.data.accounts // Access the nested data structure
+    };
+  } catch (error) {
+    console.error('Error fetching accounts:', error);
+    throw new Error('Failed to fetch accounts');
+  }
 };
 
 // Description: Create a new account
 // Endpoint: POST /api/accounting/accounts
 // Request: CreateAccountData
 // Response: { account: Account, message: string }
-export const createAccount = (data: CreateAccountData) => {
-  // Mocking the response
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      resolve({
-        account: {
-          _id: Date.now().toString(),
-          ...data,
-          balance: 0,
-          isActive: true,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString()
-        },
-        message: 'Account created successfully'
-      });
-    }, 500);
-  });
-  // Uncomment the below lines to make an actual API call
-  // try {
-  //   return await api.post('/api/accounting/accounts', data);
-  // } catch (error) {
-  //   throw new Error(error?.response?.data?.message || error.message);
-  // }
+export const   createAccount = async (data: CreateAccountData) => {
+  try {
+    const response = await api.post('/api/accounts', {
+      accountNumber: data.accountNumber,
+      accountName: data.accountName,
+      accountType: data.accountType,
+      description: data.description || '',
+      balance: data.balance || 0
+    }, {
+      headers: {
+        'Content-Type': 'application/json',
+      }
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Error details:', error.response?.data); // سجل تفاصيل الخطأ
+    throw error;
+  }
 };
 
 // Description: Get all transactions

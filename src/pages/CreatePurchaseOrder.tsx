@@ -10,7 +10,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Checkbox } from "@/components/ui/checkbox"
-import { createPurchaseOrder, CreatePurchaseOrderData, PurchaseOrderItem } from "@/api/purchaseOrders"
+import { createPurchaseOrder, CreatePurchaseOrderData} from "@/api/purchaseOrders"
 import { getOrderById, Order } from "@/api/orders"
 import { getSuppliers, createSupplier, Supplier, CreateSupplierData } from "@/api/suppliers"
 import { useToast } from "@/hooks/useToast"
@@ -70,35 +70,46 @@ useEffect(() => {
   });
 }, [JSON.stringify(watchedItems)]);
 
+useEffect(() => {
+  const fetchData = async () => {
+    if (!id) return;
 
-  useEffect(() => {
-    const fetchData = async () => {
-      if (!id) return
+    try {
+      console.log('Fetching order and suppliers for purchase order creation...');
+      
+      const [orderResponse, suppliersResponse] = await Promise.all([
+        getOrderById(id),
+        getSuppliers()
+      ]);
 
-      try {
-        console.log('Fetching order and suppliers for purchase order creation...')
-        const [orderResponse, suppliersResponse] = await Promise.all([
-          getOrderById(id) as Promise<{ order: Order }>,
-          getSuppliers() as Promise<{ suppliers: Supplier[] }>
-        ])
+      console.log('Order Response:', orderResponse); // أضف هذا للتحقق من هيكل البيانات
 
-        setOrder(orderResponse.order)
-        console.log(orderResponse.order.order.clientName)
-        setSuppliers(suppliersResponse.suppliers)
-        console.log('Data loaded successfully')
-      } catch (error) {
-        console.error('Error fetching data:', error)
-        toast({
-          title: "Error",
-          description: "Failed to load data",
-          variant: "destructive",
-        })
+      // التعديل هنا - تحقق من الهيكل الفعلي للبيانات
+      const orderData = orderResponse.data?.order || orderResponse.order || orderResponse.data;
+      const suppliersData = suppliersResponse.suppliers || suppliersResponse.data?.suppliers;
+
+      console.log( 'Order Data:', orderData.clientName);
+
+      if (!orderData) {
+        throw new Error('Order data not found in response');
       }
+
+      setOrder(orderData);
+      console.log('Order Data:', orderData); // تأكد من البيانات
+      
+      setSuppliers(suppliersData || []);
+    } catch (error) {
+      console.error('Error fetching data:', error);
+      toast({
+        title: "Error",
+        description: "Failed to load data",
+        variant: "destructive",
+      });
     }
+  };
 
-    fetchData()
-  }, [id, toast])
-
+  fetchData();
+}, [id, toast]);
   // Calculate totals when items change
   useEffect(() => {
     watchedItems?.forEach((item, index) => {
@@ -406,11 +417,14 @@ const PhotoUpload = ({
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Master Order</Label>
-                <Input value={`#${order.order._id} - ${order.order.projectName}`} disabled className="bg-slate-50" />
-              </div>
+<Input 
+  value={`#${order?._id || 'N/A'} - ${order?.projectName || 'No project name'}`} 
+  disabled 
+  className="bg-slate-50" 
+/>              </div>
               <div className="space-y-2">
                 <Label>Client</Label>
-                <Input value={order?.order?.clientName} disabled className="bg-slate-50" />
+                <Input value={order?.clientName} disabled className="bg-slate-50" />
               </div>
             </div>
 

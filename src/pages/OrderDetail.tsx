@@ -6,7 +6,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { getOrderById, Order } from "@/api/orders"
 import { getPurchaseOrdersByOrderId, PurchaseOrder, updatePurchaseOrder } from "@/api/purchaseOrders"
-import { getInvoicesByOrderId, Invoice, updateInvoice } from "@/api/invoices"
+import { Invoice, updateInvoice } from "@/api/invoices"
 import { ImagePlaceholder } from "@/components/ImagePlaceholder"
 import { WorkflowProgress } from "@/components/WorkflowProgress"
 import { useToast } from "@/hooks/useToast"
@@ -51,43 +51,53 @@ export function OrderDetail() {
   const { toast } = useToast()
   const navigate = useNavigate()
 
-  useEffect(() => {
-    const fetchOrderData = async () => {
-      if (!id) return;
+useEffect(() => {
+  const fetchOrderData = async () => {
+    if (!id) return;
 
-      try {
-        setLoading(true);
-        
-        const [
-          orderResponse,
-          purchaseOrdersResponse,
-          invoicesResponse,
-          shippingResponse
-        ] = await Promise.all([
-          getOrderById(id),
-          getPurchaseOrdersByOrderId(id),
-          getInvoicesByOrderId(id),
-          // getShippingInvoicesByOrderId(id)
-        ]);
+    try {
+      setLoading(true);
+      
+      // 1. جلب بيانات الطلب
+      const response = await getOrderById(id);
+      console.log("Full response from getOrderById:", response);
+      
+      // استخراج البيانات من الهيكل الجديد
+      const order = response.data.order; 
+      const purchaseOrders = response.data.purchaseOrders || [];
+      
+      console.log("Extracted order:", order);
+      console.log("Extracted purchaseOrders:", purchaseOrders);
 
-        setOrder(orderResponse?.order?.order || null);
-        setPurchaseOrders(orderResponse?.order?.purchaseOrders || []);
-        setInvoices(invoicesResponse?.invoices || []);
-        // setShippingInvoices(shippingResponse?.shippingInvoices || []);
-      } catch (error) {
-        console.error('Error fetching order details:', error);
-        toast({
-          title: "Error",
-          description: "Failed to load order details",
-          variant: "destructive",
-        });
-      } finally {
-        setLoading(false);
+      // 2. جلب الفواتير وأوامر الشراء بشكل متوازي
+      const [invoicesResponse, shippingResponse] = await Promise.all([
+        // getInvoicesByPurchaseId(id),
+        getPurchaseOrdersByOrderId(id)
+      ]);
+
+      if (!order) {
+        throw new Error('Order not found');
       }
-    };
 
-    fetchOrderData();
-  }, [id, toast]);
+      // 3. تحديث الحالة
+      setOrder(order);
+      setPurchaseOrders(purchaseOrders);
+      setInvoices(invoicesResponse?.invoices || []);
+
+    } catch (error) {
+      console.error('Error fetching order details:', error);
+      toast({
+        title: "Error",
+        description: "Failed to load order details",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  fetchOrderData();
+}, [id, toast]);
 
   // Handle editing for both invoices and purchase orders
   const handleEdit = (item: Invoice | PurchaseOrder, type: 'invoice' | 'purchaseOrder') => {
@@ -410,6 +420,10 @@ export function OrderDetail() {
                 </CardHeader>
                 <CardContent>
                   <p className="text-slate-700 whitespace-pre-wrap">{order.specialInstructions}</p>
+
+
+
+                  
                 </CardContent>
               </Card>
             )}
