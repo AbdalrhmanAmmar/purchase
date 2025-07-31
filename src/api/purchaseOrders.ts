@@ -144,15 +144,32 @@ export const createPurchaseOrder = async (data: CreatePurchaseOrderData) => {
 // Endpoint: PUT /api/purchase-orders/:id
 // Request: Partial<CreatePurchaseOrderData>
 // Response: { success: boolean, message: string, data: { purchaseOrder: PurchaseOrder } }
-export const updatePurchaseOrder = async (purchaseOrderId: string, data: Partial<CreatePurchaseOrderData>) => {
+// api/purchaseOrders.ts
+export const updatePurchaseOrder = async (
+  purchaseOrderId: string,
+  data: Partial<PurchaseOrder>
+): Promise<PurchaseOrder> => {
   try {
-    const response = await api.put(`/api/purchase-orders/${purchaseOrderId}`, data);
+    const response = await api.put<PurchaseOrder>(
+      `/api/purchase-orders/${purchaseOrderId}`,
+      data
+    );
     return response.data;
-  } catch (error: any) {
-    throw new Error(error?.response?.data?.message || error.message);
+  } catch (error: unknown) {
+    if (error instanceof Error) {
+      const axiosError = error as {
+        response?: { data?: { message?: string } };
+        message?: string;
+      };
+      throw new Error(
+        axiosError?.response?.data?.message || 
+        axiosError?.message || 
+        'Failed to update purchase order'
+      );
+    }
+    throw new Error('An unknown error occurred while updating the purchase order');
   }
 };
-
 // Description: Update purchase order status
 // Endpoint: PUT /api/purchase-orders/:id/status
 // Request: { status: string }

@@ -25,7 +25,8 @@ import {
   Building2,
   Save,
   X,
-  Edit
+  Edit,
+  Loader2
 } from "lucide-react"
 import {
   exportOrderOverviewToExcel,
@@ -167,58 +168,125 @@ useEffect(() => {
     }
   };
 
-  const handleSave = async () => {
-    if (!id) return;
+  // const handleSave = async () => {
+  //   if (!id) return;
 
-    try {
-      if (editingInvoice) {
-        const response = await updateInvoice(
-          id,
-          editingInvoice._id,
-          editFormData as Partial<Invoice>
-        );
+  //   try {
+  //     if (editingInvoice) {
+  //       const response = await updateInvoice(
+  //         id,
+  //         editingInvoice._id,
+  //         editFormData as Partial<Invoice>
+  //       );
 
-        if (response) {
-          setInvoices(invoices.map(inv => 
-            inv._id === editingInvoice._id ? response.invoice : inv
-          ));
-          setEditingInvoice(null);
-          toast({
-            title: "Success",
-            description: "Invoice updated successfully",
-            variant: "default",
-          });
-        }
-      } else if (editingPurchaseOrder) {
-        const response = await updatePurchaseOrder(
-          id,
-          editingPurchaseOrder._id,
-          editFormData as Partial<PurchaseOrder>
-        );
+  //       if (response) {
+  //         setInvoices(invoices.map(inv => 
+  //           inv._id === editingInvoice._id ? response.invoice : inv
+  //         ));
+  //         setEditingInvoice(null);
+  //         toast({
+  //           title: "Success",
+  //           description: "Invoice updated successfully",
+  //           variant: "default",
+  //         });
+  //       }
+  //     } else if (editingPurchaseOrder) {
+  //       const response = await updatePurchaseOrder(
+  //         id,
+  //         editingPurchaseOrder._id,
+  //         editFormData as Partial<PurchaseOrder>
+  //       );
 
-        if (response) {
-          setPurchaseOrders(purchaseOrders.map(po => 
-            po._id === editingPurchaseOrder._id ? response.purchaseOrder : po
-          ));
-          setEditingPurchaseOrder(null);
-          toast({
-            title: "Success",
-            description: "Purchase order updated successfully",
-            variant: "default",
-          });
-        }
-      }
-    } catch (error) {
-      console.error('Error updating:', error);
+  //       if (response) {
+  //         setPurchaseOrders(purchaseOrders.map(po => 
+  //           po._id === editingPurchaseOrder._id ? response.purchaseOrder : po
+  //         ));
+  //         setEditingPurchaseOrder(null);
+  //         toast({
+  //           title: "Success",
+  //           description: "Purchase order updated successfully",
+  //           variant: "default",
+  //         });
+  //       }
+  //     }
+  //   } catch (error) {
+  //     console.error('Error updating:', error);
+  //     toast({
+  //       title: "Error",
+  //       description: "Failed to update",
+  //       variant: "destructive",
+  //     });
+  //   } finally {
+  //     setEditFormData({});
+  //   }
+  // };
+
+  //edit purchase
+const handleEditPurchaseOrder = (purchaseOrder: PurchaseOrder) => {
+  setEditingPurchaseOrder(purchaseOrder);
+  setEditFormData({
+    ...purchaseOrder,
+    items: [...purchaseOrder.items]
+  });
+};
+const [isSaving, setIsSaving] = useState(false);
+
+const handleSavePurchaseOrder = async () => {
+  if (!editingPurchaseOrder) return;
+
+  try {
+        setIsSaving(true);
+
+    // تحضير البيانات للإرسال
+    const updateData = {
+      ...editFormData,
+      items: editFormData.items?.map(item => ({
+        description: item.description,
+        quantity: Number(item.quantity) || 0,
+        unitPrice: Number(item.unitPrice) || 0,
+        photo: item.photo || '',
+      }))
+    };
+
+    // إزالة الحقول التي لا يجب تحديثها
+    delete updateData.totalAmount;
+    delete updateData.remainingAmount;
+    delete updateData._id;
+
+    const response = await updatePurchaseOrder(
+      editingPurchaseOrder._id, 
+      updateData
+    );
+
+    if (response) {
+      // تحديث الحالة مع البيانات الجديدة من الباك إند
+      setPurchaseOrders(prev => prev.map(po => 
+        po._id === editingPurchaseOrder._id ? response : po
+      ));
+      
       toast({
-        title: "Error",
-        description: "Failed to update",
-        variant: "destructive",
+        title: "تم التحديث",
+        description: "تم تحديث أمر الشراء بنجاح",
+        variant: "default",
       });
-    } finally {
+      
+      // إغلاق نموذج التحرير
+      setEditingPurchaseOrder(null);
       setEditFormData({});
     }
-  };
+  } catch (error) {
+    console.error('Error updating purchase order:', error);
+    toast({
+      title: "خطأ",
+      description: error instanceof Error ? error.message : "فشل في تحديث أمر الشراء",
+      variant: "destructive",
+    });
+  }
+  finally{
+        setIsSaving(false);
+
+  }
+};
 
   const getStatusBadge = (status: string) => {
     const variants = {
@@ -312,7 +380,7 @@ useEffect(() => {
           </Button>
           <Button onClick={() => navigate(`/orders/${id}/invoice`)} variant="outline">
             <Plus className="w-4 h-4 mr-2" />
-            Invoice
+            Sales
           </Button>
           <Button onClick={() => navigate(`/orders/${id}/shipping`)} variant="outline">
             <Plus className="w-4 h-4 mr-2" />
@@ -465,7 +533,7 @@ useEffect(() => {
                             <Button 
                               variant="outline" 
                               size="sm"
-                              onClick={() => handleEdit(po, 'purchaseOrder')}
+  onClick={() => handleEditPurchaseOrder(po)}
                             >
                               <Edit className="w-4 h-4 mr-2" />
                               Edit
@@ -940,13 +1008,18 @@ useEffect(() => {
                   >
                     Cancel
                   </Button>
-                  <Button 
-                    onClick={handleSave}
-                    className="bg-blue-600 hover:bg-blue-700"
-                  >
-                    <Save className="w-4 h-4 mr-2" />
-                    Save Changes
-                  </Button>
+     <Button 
+  onClick={handleSavePurchaseOrder}
+  className="bg-blue-600 hover:bg-blue-700"
+  disabled={isSaving}
+>
+  {isSaving ? (
+    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+  ) : (
+    <Save className="w-4 h-4 mr-2" />
+  )}
+  Save Changes
+</Button>
                 </div>
               </div>
             </CardContent>
