@@ -39,7 +39,7 @@ export interface CreateInvoiceData {
 // Endpoint: GET /api/purchase-orders/:purchaseId/invoices
 export const getInvoicesByPurchaseId = async (purchaseId: string) => {
   try {
-    const response = await api.get(`/api/purchase-orders/${purchaseId}/invoices`);
+    const response = await api.get(`/api/invoices/${purchaseId}/`);
     return response.data;
   } catch (error: any) {
     throw new Error(error?.response?.data?.message || error.message);
@@ -77,23 +77,50 @@ export const updateInvoice = async (
   updatedData: Partial<Invoice>
 ) => {
   try {
-    // Recalculate if items are being updated
-    let itemsWithTotals = updatedData.items;
+    // 1. التحقق من صحة invoiceId
+    if (!invoiceId) {
+      throw new Error('Invoice ID is required');
+    }
+
+    // 2. حساب القيم الجديدة إذا كانت العناصر متضمنة
+    let finalData = { ...updatedData };
+    
     if (updatedData.items) {
-      itemsWithTotals = updatedData.items.map(item => ({
+      const itemsWithTotals = updatedData.items.map(item => ({
         ...item,
         total: item.quantity * item.unitPrice
       }));
+
+      const subtotal = itemsWithTotals.reduce((sum, item) => sum + item.total, 0);
+      const commissionRate = updatedData.commissionRate || 5.5; // قيمة افتراضية
+      const commissionFee = subtotal * (commissionRate / 100);
+      const total = subtotal + commissionFee;
+
+      finalData = {
+        ...updatedData,
+        items: itemsWithTotals,
+        subtotal,
+        commissionFee,
+        total
+      };
     }
 
-    const response = await api.patch(`/api/invoices/${invoiceId}`, {
-      ...updatedData,
-      ...(itemsWithTotals && { items: itemsWithTotals })
-    });
+    // 3. إرسال الطلب مع بيانات محدثة
+    const response = await api.put(`/api/invoices/${invoiceId}`, finalData);
+
+    // 4. التحقق من الاستجابة
+    if (!response.data) {
+      throw new Error('No data returned from server');
+    }
 
     return response.data;
+
   } catch (error: any) {
-    throw new Error(error?.response?.data?.message || error.message);
+    console.error('Error updating invoice:', {
+      invoiceId,
+      error: error.response?.data || error.message
+    });
+    throw new Error(error?.response?.data?.message || error.message || 'Failed to update invoice');
   }
 };
 

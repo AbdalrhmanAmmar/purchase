@@ -6,7 +6,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { getOrderById, Order } from "@/api/orders"
 import { getPurchaseOrdersByOrderId, PurchaseOrder, updatePurchaseOrder } from "@/api/purchaseOrders"
-import { Invoice, updateInvoice } from "@/api/invoices"
+import { getInvoicesByPurchaseId, Invoice, updateInvoice } from "@/api/invoices"
 import { ImagePlaceholder } from "@/components/ImagePlaceholder"
 import { WorkflowProgress } from "@/components/WorkflowProgress"
 import { useToast } from "@/hooks/useToast"
@@ -40,6 +40,8 @@ import {
 } from "@/utils/exportUtils"
 
 export function OrderDetail() {
+  const [isSavingInvoice, setIsSavingInvoice] = useState(false);
+
   const { id } = useParams<{ id: string }>()
   const [order, setOrder] = useState<Order | null>(null)
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([])
@@ -59,37 +61,37 @@ useEffect(() => {
     try {
       setLoading(true);
       
-      // 1. جلب بيانات الطلب
+      // 1. جلب بيانات الطلب وأوامر الشراء معاً
       const response = await getOrderById(id);
-      console.log("Full response from getOrderById:", response);
-      
-      // استخراج البيانات من الهيكل الجديد
       const order = response.data.order; 
       const purchaseOrders = response.data.purchaseOrders || [];
-      
-      console.log("Extracted order:", order);
-      console.log("Extracted purchaseOrders:", purchaseOrders);
-
-      // 2. جلب الفواتير وأوامر الشراء بشكل متوازي
-      const [invoicesResponse, shippingResponse] = await Promise.all([
-        // getInvoicesByPurchaseId(id),
-        getPurchaseOrdersByOrderId(id)
-      ]);
 
       if (!order) {
         throw new Error('Order not found');
       }
 
+      // 2. جلب الفواتير لكل أمر شراء (إذا وجدت)
+      let allInvoices = [];
+      if (purchaseOrders.length > 0) {
+        const invoicesPromises = purchaseOrders.map(po => 
+          getInvoicesByPurchaseId(po._id).then(res => res.data || [])
+        );
+        const invoicesArrays = await Promise.all(invoicesPromises);
+        allInvoices = invoicesArrays.flat();
+      }
+
+      console.log(`allInvoices`, allInvoices)
+
       // 3. تحديث الحالة
       setOrder(order);
       setPurchaseOrders(purchaseOrders);
-      setInvoices(invoicesResponse?.invoices || []);
+      setInvoices(allInvoices);
 
     } catch (error) {
       console.error('Error fetching order details:', error);
       toast({
         title: "Error",
-        description: "Failed to load order details",
+        description: error.message || "Failed to load order details",
         variant: "destructive",
       });
     } finally {
@@ -285,6 +287,71 @@ const handleSavePurchaseOrder = async () => {
   finally{
         setIsSaving(false);
 
+  }
+};
+
+const handleSaveInvoice = async () => {
+  if (!editingInvoice) return;
+
+  try {
+    setIsSavingInvoice(true);
+
+    // تحضير البيانات للإرسال
+    const updateData = {
+      ...editFormData,
+      items: editFormData.items?.map(item => ({
+        description: item.description,
+        quantity: Number(item.quantity) || 0,
+        unitPrice: Number(item.unitPrice) || 0,
+        total: Number(item.total) || 0,
+        photo: item.photo || '',
+      })),
+      subtotal: Number(editFormData.subtotal) || 0,
+      commissionFee: Number(editFormData.commissionFee) || 0,
+      total: Number(editFormData.total) || 0,
+      status: editFormData.status || 'draft',
+      paymentTerms: editFormData.paymentTerms || '',
+      dueDate: editFormData.dueDate || new Date(),
+      invoiceDate: editFormData.invoiceDate || new Date(),
+    };
+
+    // إزالة الحقول التي لا يجب تحديثها
+    delete updateData._id;
+    delete updateData.clientName;
+    delete updateData.orderId;
+    delete updateData.clientId;
+    delete updateData.createdAt;
+
+    const response = await updateInvoice(
+      editingInvoice._id, 
+      updateData as Partial<Invoice>
+    );
+
+    if (response) {
+      // تحديث الحالة مع البيانات الجديدة
+      setInvoices(prev => prev.map(inv => 
+        inv._id === editingInvoice._id ? { ...inv, ...response } : inv
+      ));
+      
+      toast({
+        title: "Success",
+        description: "Invoice updated successfully",
+        variant: "default",
+      });
+      
+      // إغلاق نموذج التحرير
+      setEditingInvoice(null);
+      setEditFormData({});
+    }
+  } catch (error) {
+    console.error('Error updating invoice:', error);
+    toast({
+      title: "Error",
+      description: error instanceof Error ? error.message : "Failed to update invoice",
+      variant: "destructive",
+    });
+  } finally {
+    setIsSavingInvoice(false);
   }
 };
 
@@ -909,12 +976,35 @@ const handleSavePurchaseOrder = async () => {
                     <option value="in-progress">In Progress</option>
                     <option value="completed">Completed</option>
                     <option value="cancelled">Cancelled</option>
-                    {editingInvoice && (
-                      <>
-                        <option value="sent">Sent</option>
-                        <option value="paid">Paid</option>
-                      </>
-                    )}
+           {editingInvoice && (
+  <div className="grid grid-cols-2 gap-4">
+    <div>
+      <label className="block text-sm font-medium text-slate-700 mb-1">
+        Payment Terms
+      </label>
+      <input
+        type="text"
+        name="paymentTerms"
+        value={editFormData.paymentTerms || ''}
+        onChange={handleEditFormChange}
+        className="w-full p-2 border border-slate-300 rounded"
+      />
+    </div>
+    <div>
+      <label className="block text-sm font-medium text-slate-700 mb-1">
+        Commission Rate (%)
+      </label>
+      <input
+        type="number"
+        name="commissionRate"
+        value={editFormData.commissionRate || ''}
+        onChange={handleEditFormChange}
+        className="w-full p-2 border border-slate-300 rounded"
+        step="0.1"
+      />
+    </div>
+  </div>
+)}
                   </select>
                 </div>
 
@@ -1008,12 +1098,12 @@ const handleSavePurchaseOrder = async () => {
                   >
                     Cancel
                   </Button>
-     <Button 
-  onClick={handleSavePurchaseOrder}
+<Button 
+  onClick={editingInvoice ? handleSaveInvoice : handleSavePurchaseOrder}
   className="bg-blue-600 hover:bg-blue-700"
-  disabled={isSaving}
+  disabled={isSaving || isSavingInvoice}
 >
-  {isSaving ? (
+  {(isSaving || isSavingInvoice) ? (
     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
   ) : (
     <Save className="w-4 h-4 mr-2" />
