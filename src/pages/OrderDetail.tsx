@@ -38,6 +38,7 @@ import {
   exportShippingToExcel,
   exportShippingToPDF
 } from "@/utils/exportUtils"
+import { getShippingInvoice, updateShippingInvoice } from '@/api/shipping'
 
 export function OrderDetail() {
   const [isSavingInvoice, setIsSavingInvoice] = useState(false);
@@ -51,6 +52,8 @@ export function OrderDetail() {
   const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null)
   const [editingPurchaseOrder, setEditingPurchaseOrder] = useState<PurchaseOrder | null>(null)
   const [editFormData, setEditFormData] = useState<Partial<Invoice> | Partial<PurchaseOrder>>({})
+  const [editingShippingInvoice, setEditingShippingInvoice] = useState<any | null>(null);
+
   const { toast } = useToast()
   const navigate = useNavigate()
 
@@ -80,12 +83,21 @@ useEffect(() => {
         allInvoices = invoicesArrays.flat();
       }
 
-      console.log(`allInvoices`, allInvoices)
-
-      // 3. تحديث الحالة
+      // 3. جلب بيانات الشحن
+      let shippingData = [];
+      try {
+        const shippingResponse = await getShippingInvoice(id);
+        shippingData = shippingResponse.data?.invoices || [];
+        console.log('Shipping data loaded:', shippingData); // للتأكد من البيانات
+      } catch (shippingError) {
+        console.error('Failed to load shipping data:', shippingError);
+      }
+      
+      // 4. تحديث الحالة مرة واحدة بجميع البيانات
       setOrder(order);
       setPurchaseOrders(purchaseOrders);
       setInvoices(allInvoices);
+      setShippingInvoices(shippingData); // استخدم shippingData بدلاً من shippingInvoices
 
     } catch (error) {
       console.error('Error fetching order details:', error);
@@ -101,6 +113,52 @@ useEffect(() => {
 
   fetchOrderData();
 }, [id, toast]);
+
+
+useEffect(() => {
+console.log("shippingInvoices", shippingInvoices)
+}, [shippingInvoices])
+
+
+//handle editing shipping
+const handleEditShipping = (shippingInvoice: any) => {
+  setEditingShippingInvoice(shippingInvoice);
+  setEditFormData({
+    ...shippingInvoice,
+    expectedDelivery: shippingInvoice.expectedDelivery.substring(0, 10) // تنسيق التاريخ
+  });
+};
+
+const handleSaveShipping = async () => {
+  if (!editingShippingInvoice || !id) return;
+
+  try {
+    setIsSaving(true);
+    
+    const response = await updateShippingInvoice(editingShippingInvoice._id, editFormData);
+    
+    setShippingInvoices(prev => prev.map(si => 
+      si._id === editingShippingInvoice._id ? response.data.invoice : si
+    ));
+    
+    toast({
+      title: "Success",
+      description: "Shipping invoice updated successfully",
+      variant: "default",
+    });
+    
+    setEditingShippingInvoice(null);
+  } catch (error) {
+    toast({
+      title: "Error",
+      description: error instanceof Error ? error.message : "Failed to update shipping invoice",
+      variant: "destructive",
+    });
+  } finally {
+    setIsSaving(false);
+  }
+};
+
 
   // Handle editing for both invoices and purchase orders
   const handleEdit = (item: Invoice | PurchaseOrder, type: 'invoice' | 'purchaseOrder') => {
@@ -816,96 +874,114 @@ const handleSaveInvoice = async () => {
               </div>
             </CardHeader>
             <CardContent>
-              {shippingInvoices.length > 0 ? (
-                <div className="space-y-4">
-                  {shippingInvoices.map((shipping) => (
-                    <Card key={shipping._id} className="border">
-                      <CardHeader>
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <CardTitle className="text-lg">Shipping #{shipping._id}</CardTitle>
-                            <CardDescription>{shipping.shippingCompanyName}</CardDescription>
-                          </div>
-                          <div className="text-right">
-                            <p className="text-lg font-semibold">${shipping.totalShippingCost?.toFixed(2)}</p>
-                            <Badge className={getStatusBadge(shipping.status)}>
-                              {shipping.status.replace('_', ' ')}
-                            </Badge>
-                          </div>
-                        </div>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="grid grid-cols-2 gap-4 mb-4">
-                          <div>
-                            <p className="text-sm text-slate-600">Tracking Number</p>
-                            <p className="font-medium font-mono">{shipping.trackingNumber}</p>
-                          </div>
-                          <div>
-                            <p className="text-sm text-slate-600">Expected Delivery</p>
-                            <p className="font-medium">{new Date(shipping.expectedDelivery).toLocaleDateString()}</p>
-                          </div>
-                        </div>
-                        <Table>
-                          <TableHeader>
-                            <TableRow>
-                              <TableHead className="w-20">Photo</TableHead>
-                              <TableHead>Description</TableHead>
-                              <TableHead className="w-24">Qty</TableHead>
-                              <TableHead className="w-24">Weight</TableHead>
-                              <TableHead className="w-24">Volume</TableHead>
-                            </TableRow>
-                          </TableHeader>
-                          <TableBody>
-                            {shipping.items.map((item, index) => (
-                              <TableRow key={index}>
-                                <TableCell>
-                                  <ImagePlaceholder
-                                    src={item.photo}
-                                    alt="Product"
-                                    className="w-16 h-16 rounded"
-                                    fallbackText="Product"
-                                  />
-                                </TableCell>
-                                <TableCell>{item.description}</TableCell>
-                                <TableCell>{item.quantity}</TableCell>
-                                <TableCell>{item.weight || 0} kg</TableCell>
-                                <TableCell>{item.volume || 0} m³</TableCell>
-                              </TableRow>
-                            ))}
-                          </TableBody>
-                        </Table>
-                        <div className="mt-4 space-y-2 text-right">
-                          <div className="flex justify-between">
-                            <span>Freight Charges:</span>
-                            <span>${shipping.freightCharges?.toFixed(2)}</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span>Insurance:</span>
-                            <span>${shipping.insurance?.toFixed(2)}</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span>Handling Fees:</span>
-                            <span>${shipping.handlingFees?.toFixed(2)}</span>
-                          </div>
-                          <div className="flex justify-between font-semibold text-lg border-t pt-2">
-                            <span>Total Shipping Cost:</span>
-                            <span>${shipping.totalShippingCost?.toFixed(2)}</span>
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
-              ) : (
-                <div className="text-center py-8">
-                  <Truck className="w-12 h-12 text-slate-400 mx-auto mb-4" />
-                  <p className="text-slate-600 mb-4">No shipping information available yet.</p>
-                  <Button onClick={() => navigate(`/orders/${id}/shipping`)}>
-                    <Plus className="w-4 h-4 mr-2" />
-                    Create Shipping Invoice
-                  </Button>
-                </div>
-              )}
+         {shippingInvoices.length > 0 ? (
+  <div className="space-y-4">
+    {shippingInvoices.map((shipping) => (
+      <Card key={shipping._id} className="border">
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="text-lg">Shipping #{shipping._id}</CardTitle>
+              <CardDescription>{shipping.shippingCompanyName}</CardDescription>
+            </div>
+            <div className="flex items-center space-x-2">
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={() => handleEditShipping(shipping)}
+              >
+                <Edit className="w-4 h-4 mr-2" />
+                Edit
+              </Button>
+              <Button variant="outline" size="sm">
+                <Eye className="w-4 h-4" />
+              </Button>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 gap-4 mb-4">
+            <div>
+              <p className="text-sm text-slate-600">Tracking Number</p>
+              <p className="font-medium font-mono">{shipping.trackingNumber}</p>
+            </div>
+            <div>
+              <p className="text-sm text-slate-600">Expected Delivery</p>
+              <p className="font-medium">
+                {new Date(shipping.expectedDelivery).toLocaleDateString()}
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-3 gap-4 mb-4">
+            <div>
+              <p className="text-sm text-slate-600">Freight Charges</p>
+              <p className="font-medium">${shipping.freightCharges?.toFixed(2)}</p>
+            </div>
+            <div>
+              <p className="text-sm text-slate-600">Insurance</p>
+              <p className="font-medium">${shipping.insurance?.toFixed(2)}</p>
+            </div>
+            <div>
+              <p className="text-sm text-slate-600">Handling Fees</p>
+              <p className="font-medium">${shipping.handlingFees?.toFixed(2)}</p>
+            </div>
+          </div>
+
+          {shipping.items?.length > 0 && (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-20">Photo</TableHead>
+                  <TableHead>Description</TableHead>
+                  <TableHead className="w-24">Qty</TableHead>
+                  <TableHead className="w-24">Weight</TableHead>
+                  <TableHead className="w-24">Volume</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {shipping.items.map((item, index) => (
+                  <TableRow key={index}>
+                    <TableCell>
+                      <ImagePlaceholder
+                        src={item.photo}
+                        alt="Product"
+                        className="w-16 h-16 rounded"
+                        fallbackText="Product"
+                      />
+                    </TableCell>
+                    <TableCell>{item.description}</TableCell>
+                    <TableCell>{item.quantity}</TableCell>
+                    <TableCell>{item.weight || 0} kg</TableCell>
+                    <TableCell>{item.volume || 0} m³</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+
+          <div className="mt-4 flex justify-end">
+            <div className="text-right space-y-2">
+              <div className="flex justify-between font-semibold text-lg border-t pt-2">
+                <span>Total Shipping Cost:</span>
+                <span>${shipping.totalShippingCost?.toFixed(2)}</span>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    ))}
+  </div>
+) : (
+  <div className="text-center py-8">
+    <Truck className="w-12 h-12 text-slate-400 mx-auto mb-4" />
+    <p className="text-slate-600 mb-4">No shipping information available yet.</p>
+    <Button onClick={() => navigate(`/orders/${id}/shipping`)}>
+      <Plus className="w-4 h-4 mr-2" />
+      Create Shipping Invoice
+    </Button>
+  </div>
+)}
             </CardContent>
           </Card>
         </TabsContent>
@@ -1116,6 +1192,232 @@ const handleSaveInvoice = async () => {
           </Card>
         </div>
       )}
+      {editingShippingInvoice && (
+  <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+    <Card className="w-full max-w-3xl max-h-[90vh] overflow-y-auto">
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <CardTitle>Edit Shipping Invoice #{editingShippingInvoice._id}</CardTitle>
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            onClick={() => setEditingShippingInvoice(null)}
+          >
+            <X className="w-4 h-4" />
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">
+                Shipping Company
+              </label>
+              <input
+                type="text"
+                name="shippingCompanyName"
+                value={editFormData.shippingCompanyName || ''}
+                onChange={(e) => setEditFormData({...editFormData, shippingCompanyName: e.target.value})}
+                className="w-full p-2 border border-slate-300 rounded"
+              />
+            </div>
+            
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">
+                Tracking Number
+              </label>
+              <input
+                type="text"
+                name="trackingNumber"
+                value={editFormData.trackingNumber || ''}
+                onChange={(e) => setEditFormData({...editFormData, trackingNumber: e.target.value})}
+                className="w-full p-2 border border-slate-300 rounded"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">
+                Expected Delivery
+              </label>
+              <input
+                type="date"
+                name="expectedDelivery"
+                value={editFormData.expectedDelivery?.toString().substring(0, 10) || ''}
+                onChange={(e) => setEditFormData({...editFormData, expectedDelivery: e.target.value})}
+                className="w-full p-2 border border-slate-300 rounded"
+              />
+            </div>
+            
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">
+                Status
+              </label>
+              <select
+                name="status"
+                value={editFormData.status || ''}
+                onChange={(e) => setEditFormData({...editFormData, status: e.target.value})}
+                className="w-full p-2 border border-slate-300 rounded"
+              >
+                <option value="pending">Pending</option>
+                <option value="in-progress">In Progress</option>
+                <option value="shipped">Shipped</option>
+                <option value="delivered">Delivered</option>
+                <option value="cancelled">Cancelled</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">
+                Freight Charges ($)
+              </label>
+              <input
+                type="number"
+                name="freightCharges"
+                value={editFormData.freightCharges || 0}
+                onChange={(e) => setEditFormData({...editFormData, freightCharges: Number(e.target.value)})}
+                className="w-full p-2 border border-slate-300 rounded"
+                min="0"
+                step="0.01"
+              />
+            </div>
+            
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">
+                Insurance ($)
+              </label>
+              <input
+                type="number"
+                name="insurance"
+                value={editFormData.insurance || 0}
+                onChange={(e) => setEditFormData({...editFormData, insurance: Number(e.target.value)})}
+                className="w-full p-2 border border-slate-300 rounded"
+                min="0"
+                step="0.01"
+              />
+            </div>
+            
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">
+                Handling Fees ($)
+              </label>
+              <input
+                type="number"
+                name="handlingFees"
+                value={editFormData.handlingFees || 0}
+                onChange={(e) => setEditFormData({...editFormData, handlingFees: Number(e.target.value)})}
+                className="w-full p-2 border border-slate-300 rounded"
+                min="0"
+                step="0.01"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">
+              Total Shipping Cost ($)
+            </label>
+            <input
+              type="number"
+              name="totalShippingCost"
+              value={editFormData.totalShippingCost || 0}
+              onChange={(e) => setEditFormData({...editFormData, totalShippingCost: Number(e.target.value)})}
+              className="w-full p-2 border border-slate-300 rounded"
+              min="0"
+              step="0.01"
+            />
+          </div>
+
+          <div>
+            <h3 className="text-lg font-medium text-slate-900 mb-2">Items</h3>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Description</TableHead>
+                  <TableHead className="w-24">Qty</TableHead>
+                  <TableHead className="w-24">Weight (kg)</TableHead>
+                  <TableHead className="w-24">Volume (m³)</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {editFormData.items?.map((item, index) => (
+                  <TableRow key={index}>
+                    <TableCell>
+                      <input
+                        type="text"
+                        name={`items.${index}.description`}
+                        value={item.description}
+                        onChange={(e) => handleEditFormChange(e, index)}
+                        className="w-full p-2 border border-slate-300 rounded"
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <input
+                        type="number"
+                        name={`items.${index}.quantity`}
+                        value={item.quantity}
+                        onChange={(e) => handleEditFormChange(e, index)}
+                        className="w-full p-2 border border-slate-300 rounded"
+                        min="1"
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <input
+                        type="number"
+                        name={`items.${index}.weight`}
+                        value={item.weight}
+                        onChange={(e) => handleEditFormChange(e, index)}
+                        className="w-full p-2 border border-slate-300 rounded"
+                        min="0"
+                        step="0.1"
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <input
+                        type="number"
+                        name={`items.${index}.volume`}
+                        value={item.volume}
+                        onChange={(e) => handleEditFormChange(e, index)}
+                        className="w-full p-2 border border-slate-300 rounded"
+                        min="0"
+                        step="0.01"
+                      />
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+
+          <div className="flex justify-end space-x-2 pt-4">
+            <Button 
+              variant="outline" 
+              onClick={() => setEditingShippingInvoice(null)}
+            >
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleSaveShipping}
+              className="bg-blue-600 hover:bg-blue-700"
+              disabled={isSaving}
+            >
+              {isSaving ? (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              ) : (
+                <Save className="w-4 h-4 mr-2" />
+              )}
+              Save Changes
+            </Button>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  </div>
+)}
     </div>
   )
 }

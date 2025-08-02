@@ -1,11 +1,10 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useToast } from '@/hooks/useToast';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
-import { createShippingCompany, createShippingInvoice } from '@/api/shipping';
-import { getOrderById } from '@/api/orders';
+import { createShippingCompany, createShippingInvoice, getShippingCompanies } from '@/api/shipping';
 import {
   Card,
   CardContent,
@@ -42,14 +41,14 @@ import { ArrowLeft, Plus, CalendarIcon, Save } from 'lucide-react';
 
 interface ShippingCompany {
   _id: string;
-  name: string;
+  companyName: string;
 }
 
 interface CreateShippingFormData {
-  shippingCompanyId: string;
+  shippingCompanyName: string;
   trackingNumber: string;
   shippingMethod: string;
-  expectedDelivery: Date;
+  expectedDelivery?: Date;
   freightCharges: number;
   insurance: number;
   handlingFees: number;
@@ -57,19 +56,25 @@ interface CreateShippingFormData {
 }
 
 interface CreateCompanyFormData {
-  name: string;
+  companyName: string;
 }
 
 export function CreateShipping() {
   const { id: orderId } = useParams<{ id: string }>();
-  const [shippingCompanies, setShippingCompanies] = useState<ShippingCompany[]>([]);
+  const [companies, setCompanies] = useState<ShippingCompany[]>([]);
   const [expectedDelivery, setExpectedDelivery] = useState<Date>();
   const [loading, setLoading] = useState(false);
   const [companyDialogOpen, setCompanyDialogOpen] = useState(false);
   const { toast } = useToast();
   const navigate = useNavigate();
 
-  const { register, handleSubmit, formState: { errors }, setValue, watch } = useForm<CreateShippingFormData>({
+  const { 
+    register, 
+    handleSubmit, 
+    formState: { errors }, 
+    setValue, 
+    watch 
+  } = useForm<CreateShippingFormData>({
     defaultValues: {
       freightCharges: 0,
       insurance: 0,
@@ -78,10 +83,41 @@ export function CreateShipping() {
     }
   });
 
-  const { register: registerCompany, handleSubmit: handleCompanySubmit, reset: resetCompany } = useForm<CreateCompanyFormData>();
+  const { 
+    register: registerCompany, 
+    handleSubmit: handleCompanySubmit, 
+    reset: resetCompany,
+    formState: { errors: companyErrors }
+  } = useForm<CreateCompanyFormData>();
 
   const watchedCharges = watch(['freightCharges', 'insurance', 'handlingFees']);
-  const totalShippingCost = watchedCharges.reduce((sum, charge) => sum + (charge || 0), 0);
+  const totalShippingCost = watchedCharges.reduce((sum, charge) => sum + (Number(charge) || 0), 0);
+
+  useEffect(() => {
+    if (!orderId) {
+      toast({
+        title: "Error",
+        description: "No order ID provided",
+        variant: "destructive",
+      });
+      navigate('/orders');
+      return;
+    }
+
+    const fetchCompanies = async () => {
+      try {
+        const data = await getShippingCompanies();
+        setCompanies(data);
+      } catch (error: any) {
+        toast({
+          title: "Error",
+          description: error.message || "Failed to load shipping companies",
+          variant: "destructive",
+        });
+      }
+    };
+    fetchCompanies();
+  }, [orderId, toast, navigate]);
 
   const onSubmit = async (data: CreateShippingFormData) => {
     if (!expectedDelivery) {
@@ -93,7 +129,14 @@ export function CreateShipping() {
       return;
     }
 
-    if (!orderId) return;
+    if (!orderId) {
+      toast({
+        title: "Error",
+        description: "No order ID provided",
+        variant: "destructive",
+      });
+      return;
+    }
 
     setLoading(true);
     try {
@@ -101,7 +144,9 @@ export function CreateShipping() {
         ...data,
         orderId,
         expectedDelivery: expectedDelivery.toISOString(),
-        totalShippingCost
+        totalShippingCost,
+        shippingMethod: data.shippingMethod,
+        paymentMethod: data.paymentMethod
       };
 
       await createShippingInvoice(shippingData);
@@ -110,10 +155,10 @@ export function CreateShipping() {
         description: "Shipping invoice created successfully",
       });
       navigate(`/orders/${orderId}`);
-    } catch (error) {
+    } catch (error: any) {
       toast({
         title: "Error",
-        description: "Failed to create shipping invoice",
+        description: error.message || "Failed to create shipping invoice",
         variant: "destructive",
       });
     } finally {
@@ -124,22 +169,26 @@ export function CreateShipping() {
   const onCreateCompany = async (data: CreateCompanyFormData) => {
     try {
       const response = await createShippingCompany(data);
-      setShippingCompanies(prev => [...prev, response.data]);
-      setValue('shippingCompanyId', response.data._id);
+      setCompanies(prev => [...prev, response]);
+      setValue('shippingCompanyName', response.companyName);
       setCompanyDialogOpen(false);
       resetCompany();
       toast({
         title: "Success",
         description: "Shipping company created successfully",
       });
-    } catch (error) {
+    } catch (error: any) {
       toast({
         title: "Error",
-        description: "Failed to create shipping company",
+        description: error.message || "Failed to create shipping company",
         variant: "destructive",
       });
     }
   };
+
+  if (!orderId) {
+    return null;
+  }
 
   return (
     <div className="space-y-6">
@@ -163,14 +212,17 @@ export function CreateShipping() {
             <div className="space-y-2">
               <Label>Shipping Company *</Label>
               <div className="flex space-x-2">
-                <Select onValueChange={(value) => setValue('shippingCompanyId', value)}>
+                <Select 
+                  onValueChange={(value) => setValue('shippingCompanyName', value)}
+                  required
+                >
                   <SelectTrigger className="flex-1">
                     <SelectValue placeholder="Select a shipping company" />
                   </SelectTrigger>
                   <SelectContent>
-                    {shippingCompanies.map((company) => (
-                      <SelectItem key={company._id} value={company._id}>
-                        {company.name}
+                    {companies.map((company) => (
+                      <SelectItem key={company._id} value={company.companyName}>
+                        {company.companyName}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -189,35 +241,38 @@ export function CreateShipping() {
                     </DialogHeader>
                     <form onSubmit={handleCompanySubmit(onCreateCompany)} className="space-y-4">
                       <div className="space-y-2">
-                        <Label htmlFor="name">Company Name *</Label>
+                        <Label>Company Name *</Label>
                         <Input
-                          {...registerCompany('name', { required: true })}
+                          {...registerCompany('companyName', { 
+                            required: 'Company name is required' 
+                          })}
                           placeholder="Enter company name"
                         />
+                        {companyErrors.companyName && (
+                          <p className="text-sm text-red-600">{companyErrors.companyName.message}</p>
+                        )}
                       </div>
                       <DialogFooter>
-                        <Button type="button" variant="outline" onClick={() => setCompanyDialogOpen(false)}>
-                          Cancel
-                        </Button>
-                        <Button type="submit">
-                          Save Company
-                        </Button>
+                        <Button type="submit">Save Company</Button>
                       </DialogFooter>
                     </form>
                   </DialogContent>
                 </Dialog>
               </div>
+              {errors.shippingCompanyName && (
+                <p className="text-sm text-red-600">Please select a shipping company</p>
+              )}
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="trackingNumber">Tracking Number *</Label>
                 <Input
-                  {...register('trackingNumber', { required: true })}
+                  {...register('trackingNumber', { required: 'Tracking number is required' })}
                   placeholder="Enter tracking number"
                 />
                 {errors.trackingNumber && (
-                  <p className="text-sm text-red-600">Tracking number is required</p>
+                  <p className="text-sm text-red-600">{errors.trackingNumber.message}</p>
                 )}
               </div>
               <div className="space-y-2">
@@ -236,6 +291,9 @@ export function CreateShipping() {
                     <SelectItem value="Ground">Ground</SelectItem>
                   </SelectContent>
                 </Select>
+                {errors.shippingMethod && (
+                  <p className="text-sm text-red-600">Please select a shipping method</p>
+                )}
               </div>
               <div className="space-y-2">
                 <Label>Expected Delivery *</Label>
@@ -258,6 +316,7 @@ export function CreateShipping() {
                       selected={expectedDelivery}
                       onSelect={setExpectedDelivery}
                       initialFocus
+                      fromDate={new Date()}
                     />
                   </PopoverContent>
                 </Popover>
@@ -276,44 +335,63 @@ export function CreateShipping() {
               <div className="space-y-2">
                 <Label htmlFor="freightCharges">Freight Charges ($)</Label>
                 <Input
-                  {...register('freightCharges', { min: 0 })}
+                  {...register('freightCharges', { 
+                    min: { value: 0, message: 'Must be positive number' },
+                    valueAsNumber: true
+                  })}
                   type="number"
                   step="0.01"
                   min="0"
                   placeholder="0.00"
                 />
+                {errors.freightCharges && (
+                  <p className="text-sm text-red-600">{errors.freightCharges.message}</p>
+                )}
               </div>
               <div className="space-y-2">
                 <Label htmlFor="insurance">Insurance ($)</Label>
                 <Input
-                  {...register('insurance', { min: 0 })}
+                  {...register('insurance', { 
+                    min: { value: 0, message: 'Must be positive number' },
+                    valueAsNumber: true
+                  })}
                   type="number"
                   step="0.01"
                   min="0"
                   placeholder="0.00"
                 />
+                {errors.insurance && (
+                  <p className="text-sm text-red-600">{errors.insurance.message}</p>
+                )}
               </div>
               <div className="space-y-2">
                 <Label htmlFor="handlingFees">Handling Fees ($)</Label>
                 <Input
-                  {...register('handlingFees', { min: 0 })}
+                  {...register('handlingFees', { 
+                    min: { value: 0, message: 'Must be positive number' },
+                    valueAsNumber: true
+                  })}
                   type="number"
                   step="0.01"
                   min="0"
                   placeholder="0.00"
                 />
+                {errors.handlingFees && (
+                  <p className="text-sm text-red-600">{errors.handlingFees.message}</p>
+                )}
               </div>
             </div>
 
             <div className="space-y-3">
-              <Label>Payment Method</Label>
+              <Label>Payment Method *</Label>
               <div className="space-y-2">
                 <div className="flex items-center space-x-2">
                   <input
                     type="radio"
                     id="client_direct"
                     value="client_direct"
-                    {...register('paymentMethod')}
+                    {...register('paymentMethod', { required: 'Payment method is required' })}
+                    className="h-4 w-4 text-primary focus:ring-primary"
                   />
                   <Label htmlFor="client_direct">Client pays directly to shipping company</Label>
                 </div>
@@ -323,10 +401,14 @@ export function CreateShipping() {
                     id="agency_bills"
                     value="agency_bills"
                     {...register('paymentMethod')}
+                    className="h-4 w-4 text-primary focus:ring-primary"
                   />
                   <Label htmlFor="agency_bills">Agency pays and bills client (no markup)</Label>
                 </div>
               </div>
+              {errors.paymentMethod && (
+                <p className="text-sm text-red-600">{errors.paymentMethod.message}</p>
+              )}
             </div>
 
             <div className="border-t pt-4">
@@ -349,11 +431,24 @@ export function CreateShipping() {
             type="submit"
             disabled={loading}
           >
-            <Save className="w-4 h-4 mr-2" />
-            {loading ? 'Creating...' : 'Create Invoice'}
+            {loading ? (
+              <>
+                <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                Creating...
+              </>
+            ) : (
+              <>
+                <Save className="w-4 h-4 mr-2" />
+                Create Invoice
+              </>
+            )}
           </Button>
         </div>
       </form>
+      
     </div>
   );
 }

@@ -74,7 +74,7 @@ export const updateShippingInvoice = async (id: string, data: UpdateShippingData
 // Endpoint: GET /api/shipping/companies
 export const getShippingCompanies = async () => {
   try {
-    const response = await api.get('/api/shipping/companies');
+    const response = await api.get('/api/shippingCompany');
     return response.data;
   } catch (error: any) {
     throw new Error(error?.response?.data?.message || error.message);
@@ -85,7 +85,7 @@ export const getShippingCompanies = async () => {
 // Endpoint: POST /api/shipping/companies
 export const createShippingCompany = async (data: { name: string }) => {
   try {
-    const response = await api.post('/api/shipping/companies', data);
+    const response = await api.post('/api/shippingCompany', data);
     return response.data;
   } catch (error: any) {
     throw new Error(error?.response?.data?.message || error.message);
