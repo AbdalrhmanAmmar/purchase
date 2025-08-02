@@ -4,14 +4,16 @@ import JSONbig from 'json-bigint';
 
 
 const localApi = axios.create({
-  baseURL: "https://api-project-rdy9.onrender.com/",
+  baseURL: "https://api-project-rdy9.onrender.com", // إزالة "/" النهائية
   headers: {
     'Content-Type': 'application/json',
+    'Accept': 'application/json'
   },
-  validateStatus: (status) => {
-    return status >= 200 && status < 300;
-  },
-  transformResponse: [(data) => JSONbig.parse(data)]
+  withCredentials: true, // لإرسال الكوكيز إذا كنت تستخدمها
+  timeout: 10000, // 10 ثانية كحد أقصى للانتظار
+  validateStatus: function (status) {
+    return status >= 200 && status < 500; // تقبل كل الأكواد ما عدا 500+
+  }
 });
 
 
