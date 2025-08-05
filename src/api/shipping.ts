@@ -2,20 +2,24 @@
 import api from './api'; // Assuming you have an api instance configured
 
 interface CreateShippingData {
-  orderId: string;
-  shippingCompanyName: string;
-  trackingNumber: string;
-  expectedDelivery: string;
-  totalShippingCost: number;
-  items: ShippingItem[];
+  InvoiceId: string; // مطلوب في الباك إند
+  shippingCompanyName: string; // مطلوب
+  trackingNumber: string; // مطلوب
+  expectedDelivery: string; // مطلوب (سيتم تحويله لتاريخ في الباك إند)
+  freightCharges?: number;
+  insurance?: number;
+  handlingFees?: number;
+  totalShippingCost: number; // مطلوب
+  status?: string; // اختياري
+  items: ShippingItem[]; // مطلوب
 }
 
 interface ShippingItem {
-  itemId: string;
   description: string;
   quantity: number;
-  weight: number;
-  volume: number;
+  photo?: string;
+  weight?: number;
+  volume?: number;
 }
 
 interface UpdateShippingData {
@@ -39,22 +43,77 @@ export const getShippingInvoice = async (id: string) => {
 
 // Description: Create a new shipping invoice
 // Endpoint: POST /api/shipping
+interface CreateShippingData {
+  orderId: string; // أضف هذا الحقل
+  InvoiceId: string;
+  shippingCompanyName: string;
+  trackingNumber: string;
+  expectedDelivery: string;
+  freightCharges?: number;
+  insurance?: number;
+  handlingFees?: number;
+  totalShippingCost: number;
+  status?: string;
+  items: Array<{
+    description: string;
+    quantity: number;
+    photo?: string;
+    weight?: number;
+    volume?: number;
+    purchaseOrderId?: string; // إضافة إذا كنت تحتاجها
+  }>;
+}
+
 export const createShippingInvoice = async (data: CreateShippingData) => {
   try {
-    // Calculate total shipping cost if not provided
-    const totalCost = data.totalShippingCost || calculateDefaultShippingCost(data.items);
+    // التحقق من الحقول المطلوبة
+    const requiredFields = [
+      'orderId', // أضف orderId للحقول المطلوبة
+      'InvoiceId',
+      'shippingCompanyName',
+      'trackingNumber',
+      'expectedDelivery',
+      'totalShippingCost',
+      'items'
+    ];
     
+    const missingFields = requiredFields.filter(field => !data[field]);
+    
+    if (missingFields.length > 0) {
+      throw new Error(`Missing required fields: ${missingFields.join(', ')}`);
+    }
+
+    // التحقق من صحة items
+    if (!Array.isArray(data.items) || data.items.length === 0) {
+      throw new Error('At least one item is required');
+    }
+
     const response = await api.post('/api/shipping', {
-      orderId: data.orderId,
+      orderId: data.orderId, // أضف orderId هنا
+      InvoiceId: data.InvoiceId,
       shippingCompanyName: data.shippingCompanyName,
       trackingNumber: data.trackingNumber,
+      shippingMethod: data.shippingMethod || 'Ground', // قيمة افتراضية
       expectedDelivery: data.expectedDelivery,
-      totalShippingCost: totalCost,
-      items: data.items
+      freightCharges: data.freightCharges || 0,
+      insurance: data.insurance || 0,
+      handlingFees: data.handlingFees || 0,
+      totalShippingCost: data.totalShippingCost,
+      paymentMethod: data.paymentMethod || 'client_direct', // قيمة افتراضية
+      status: data.status || 'pending',
+      items: data.items.map(item => ({
+        description: item.description,
+        quantity: item.quantity,
+        photo: item.photo || '',
+        weight: item.weight || 0,
+        volume: item.volume || 0,
+        purchaseOrderId: item.purchaseOrderId // إضافة إذا كنت تحتاجها
+      }))
     });
 
     return response.data;
   } catch (error: any) {
+    console.error('Error creating shipping invoice:', error);
     throw new Error(error?.response?.data?.message || error.message);
   }
 };
@@ -101,3 +160,17 @@ function calculateDefaultShippingCost(items: ShippingItem[]): number {
     return total + Math.max(weightCost, volumeCost);
   }, 0);
 }
+
+export const getShippingInvoicesByOrderId = async (orderId: string) => {
+  try {
+    if (!orderId) {
+      throw new Error('Order ID is required');
+    }
+
+    const response = await api.get(`/api/shipping/${orderId}`);
+    return response.data;
+  } catch (error: any) {
+    console.error('Error fetching shipping invoices by order ID:', error);
+    throw new Error(error?.response?.data?.message || error.message);
+  }
+};

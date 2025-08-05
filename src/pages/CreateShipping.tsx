@@ -5,6 +5,7 @@ import { useToast } from '@/hooks/useToast';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { createShippingCompany, createShippingInvoice, getShippingCompanies } from '@/api/shipping';
+import { useInvoiceStore } from "../../store/invoiceStore"
 import {
   Card,
   CardContent,
@@ -38,6 +39,9 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import { ArrowLeft, Plus, CalendarIcon, Save } from 'lucide-react';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { ImagePlaceholder } from '@/components/ImagePlaceholder';
 
 interface ShippingCompany {
   _id: string;
@@ -53,6 +57,7 @@ interface CreateShippingFormData {
   insurance: number;
   handlingFees: number;
   paymentMethod: string;
+  selectedItems: string[];
 }
 
 interface CreateCompanyFormData {
@@ -60,6 +65,7 @@ interface CreateCompanyFormData {
 }
 
 export function CreateShipping() {
+  const { invoices } = useInvoiceStore();
   const { id: orderId } = useParams<{ id: string }>();
   const [companies, setCompanies] = useState<ShippingCompany[]>([]);
   const [expectedDelivery, setExpectedDelivery] = useState<Date>();
@@ -73,13 +79,14 @@ export function CreateShipping() {
     handleSubmit, 
     formState: { errors }, 
     setValue, 
-    watch 
+    watch,
   } = useForm<CreateShippingFormData>({
     defaultValues: {
       freightCharges: 0,
       insurance: 0,
       handlingFees: 0,
-      paymentMethod: 'client_direct'
+      paymentMethod: 'client_direct',
+      selectedItems: []
     }
   });
 
@@ -92,6 +99,25 @@ export function CreateShipping() {
 
   const watchedCharges = watch(['freightCharges', 'insurance', 'handlingFees']);
   const totalShippingCost = watchedCharges.reduce((sum, charge) => sum + (Number(charge) || 0), 0);
+
+  // Get order-specific invoices and flatten items
+  const allInvoiceItems = invoices.flatMap(invoice => 
+    invoice.items.map(item => ({
+      ...item,
+      invoiceId: invoice._id,
+      invoiceNumber: invoice.invoiceNumber,
+      clientName: invoice.clientName
+    }))
+  );
+
+  console.log(`allInvoiceItems`, allInvoiceItems)
+
+  const handleItemSelect = (invoiceId: string, isChecked: boolean) => {
+    setValue('selectedItems', isChecked 
+      ? [...watch('selectedItems'), invoiceId]
+      : watch('selectedItems').filter(id => id !== invoiceId)
+    );
+  };
 
   useEffect(() => {
     if (!orderId) {
@@ -119,7 +145,17 @@ export function CreateShipping() {
     fetchCompanies();
   }, [orderId, toast, navigate]);
 
-  const onSubmit = async (data: CreateShippingFormData) => {
+const onSubmit = async (data: CreateShippingFormData) => {
+  try {
+    if (!data.selectedItems || data.selectedItems.length === 0) {
+      toast({
+        title: "Error",
+        description: "Please select at least one invoice",
+        variant: "destructive",
+      });
+      return;
+    }
+
     if (!expectedDelivery) {
       toast({
         title: "Error",
@@ -129,42 +165,56 @@ export function CreateShipping() {
       return;
     }
 
-    if (!orderId) {
-      toast({
-        title: "Error",
-        description: "No order ID provided",
-        variant: "destructive",
-      });
-      return;
-    }
-
     setLoading(true);
-    try {
-      const shippingData = {
-        ...data,
-        orderId,
-        expectedDelivery: expectedDelivery.toISOString(),
-        totalShippingCost,
-        shippingMethod: data.shippingMethod,
-        paymentMethod: data.paymentMethod
-      };
+    
+    const selectedInvoicesItems = allInvoiceItems.filter(item => 
+      data.selectedItems.includes(item.invoiceId)
+    );
 
-      await createShippingInvoice(shippingData);
-      toast({
-        title: "Success",
-        description: "Shipping invoice created successfully",
-      });
+    const shippingData = {
+       orderId: orderId,
+      InvoiceId: data.selectedItems[0],
+      shippingCompanyName: data.shippingCompanyName,
+      trackingNumber: data.trackingNumber,
+      shippingMethod: data.shippingMethod,
+      expectedDelivery: expectedDelivery.toISOString(),
+      freightCharges: data.freightCharges,
+      insurance: data.insurance,
+      handlingFees: data.handlingFees,
+      totalShippingCost: totalShippingCost,
+      paymentMethod: data.paymentMethod,
+      items: selectedInvoicesItems.map(item => ({
+        description: item.description,
+        quantity: item.quantity,
+        photo: item.photo || '',
+        weight: item.weight || 0,
+        volume: item.volume || 0,
+        unitPrice: item.unitPrice
+      }))
+    };
+
+    await createShippingInvoice(shippingData);
+
+    toast({ 
+      title: "Success", 
+      description: "Shipping invoice created successfully" 
+    });
+    
+    // تأخير التوجيه لمدة 2 ثانية للسماح برؤية رسالة النجاح
+    setTimeout(() => {
       navigate(`/orders/${orderId}`);
-    } catch (error: any) {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to create shipping invoice",
-        variant: "destructive",
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
+    }, 2000);
+    
+  } catch (error: any) {
+    console.error("Error during submission:", error);
+    toast({
+      title: "Error",
+      description: error.message || "Failed to create shipping invoice",
+      variant: "destructive",
+    });
+    setLoading(false); // تأكد من إعادة تعيين حالة التحميل عند الخطأ
+  }
+};
 
   const onCreateCompany = async (data: CreateCompanyFormData) => {
     try {
@@ -327,6 +377,63 @@ export function CreateShipping() {
 
         <Card>
           <CardHeader>
+            <CardTitle>Invoices to Ship</CardTitle>
+            <CardDescription>Select invoices to include in this shipment</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {invoices.length > 0 ? (
+              <div className="border rounded-lg overflow-hidden">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-12">Select</TableHead>
+                      <TableHead>Photo</TableHead>
+                      <TableHead>Invoice #</TableHead>
+                      <TableHead>Client</TableHead>
+                      <TableHead>quantity</TableHead>
+                      <TableHead>unitPrice</TableHead>
+                      <TableHead className="text-right">Total</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+            {allInvoiceItems.map((item) => (
+  <TableRow key={`${item.invoiceId}-${item._id}`}>
+    <TableCell>
+      <Checkbox
+        checked={watch('selectedItems').includes(item.invoiceId)}
+        onCheckedChange={(checked) => 
+          handleItemSelect(item.invoiceId, checked as boolean)
+        }
+      />
+    </TableCell>
+    <TableCell className="font-medium">
+                <ImagePlaceholder
+                                          src={item.photo}
+                                          alt="Product"
+                                          className="w-16 h-16 rounded"
+                                          fallbackText="Product"
+                                        />
+    </TableCell>
+    <TableCell className="font-medium">{item.invoiceId}</TableCell>
+    <TableCell>{item.clientName}</TableCell>
+    <TableCell>{item.quantity}</TableCell> {/* لأن كل صف يمثل صنف واحد */}
+    <TableCell>{item.unitPrice}</TableCell> {/* لأن كل صف يمثل صنف واحد */}
+    <TableCell className="text-right">${item.total?.toFixed(2)}</TableCell>
+  </TableRow>
+))}
+                  </TableBody>
+                </Table>
+              </div>
+            ) : (
+              <div className="text-center py-8">
+                <p className="text-slate-500">No invoices found for this order</p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
             <CardTitle>Cost Breakdown</CardTitle>
             <CardDescription>Shipping costs and payment method</CardDescription>
           </CardHeader>
@@ -413,10 +520,15 @@ export function CreateShipping() {
 
             <div className="border-t pt-4">
               <div className="flex justify-end">
-                <div className="text-right">
-                  <p className="text-lg font-semibold">
-                    Total Shipping Cost: ${totalShippingCost.toFixed(2)}
-                  </p>
+                <div className="text-right space-y-2">
+                  <div className="flex justify-between">
+                    <span className="font-medium">Subtotal:</span>
+                    <span>${totalShippingCost.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between font-semibold text-lg">
+                    <span>Total Shipping Cost:</span>
+                    <span>${totalShippingCost.toFixed(2)}</span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -442,13 +554,12 @@ export function CreateShipping() {
             ) : (
               <>
                 <Save className="w-4 h-4 mr-2" />
-                Create Invoice
+                Create Shipping Invoice
               </>
             )}
           </Button>
         </div>
       </form>
-      
     </div>
   );
 }

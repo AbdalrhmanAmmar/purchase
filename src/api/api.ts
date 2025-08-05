@@ -4,7 +4,7 @@ import JSONbig from 'json-bigint';
 
 
 const localApi = axios.create({
-  baseURL: "https://api-project-rdy9.onrender.com", // إزالة "/" النهائية
+  baseURL: "https://api-project-rdy9.onrender.com/", // إزالة "/" النهائية
   headers: {
     'Content-Type': 'application/json',
     'Accept': 'application/json'

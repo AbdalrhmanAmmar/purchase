@@ -38,15 +38,17 @@ import {
   exportShippingToExcel,
   exportShippingToPDF
 } from "@/utils/exportUtils"
-import { getShippingInvoice, updateShippingInvoice } from '@/api/shipping'
+import { getShippingInvoice, getShippingInvoicesByOrderId, updateShippingInvoice } from '@/api/shipping'
+import { useInvoiceStore } from './../../store/invoiceStore';
 
 export function OrderDetail() {
   const [isSavingInvoice, setIsSavingInvoice] = useState(false);
+    const { invoices, setInvoices, updateInvoice: updateStoreInvoice } = useInvoiceStore();
+
 
   const { id } = useParams<{ id: string }>()
   const [order, setOrder] = useState<Order | null>(null)
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([])
-  const [invoices, setInvoices] = useState<Invoice[]>([])
   const [shippingInvoices, setShippingInvoices] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null)
@@ -64,46 +66,51 @@ useEffect(() => {
     try {
       setLoading(true);
       
-      // 1. جلب بيانات الطلب وأوامر الشراء معاً
-      const response = await getOrderById(id);
-      const order = response.data.order; 
-      const purchaseOrders = response.data.purchaseOrders || [];
+      // 1. جلب بيانات الطلب الأساسية وأوامر الشراء
+      const orderResponse = await getOrderById(id);
+      const order = orderResponse.data.order; 
+      const fetchedPurchaseOrders = orderResponse.data.purchaseOrders || [];
 
       if (!order) {
         throw new Error('Order not found');
       }
 
-      // 2. جلب الفواتير لكل أمر شراء (إذا وجدت)
-      let allInvoices = [];
-      if (purchaseOrders.length > 0) {
-        const invoicesPromises = purchaseOrders.map(po => 
+      // 2. تحديث حالة أوامر الشراء
+      setPurchaseOrders(fetchedPurchaseOrders);
+
+      // 3. جلب الفواتير المرتبطة بأوامر الشراء
+      let allInvoices: Invoice[] = [];
+      if (fetchedPurchaseOrders.length > 0) {
+        const invoicesPromises = fetchedPurchaseOrders.map(po => 
           getInvoicesByPurchaseId(po._id).then(res => res.data || [])
         );
-        const invoicesArrays = await Promise.all(invoicesPromises);
-        allInvoices = invoicesArrays.flat();
+        allInvoices = (await Promise.all(invoicesPromises)).flat();
+        setInvoices(allInvoices);
       }
 
-      // 3. جلب بيانات الشحن
-      let shippingData = [];
+      // 4. جلب بيانات الشحن باستخدام الدالة المخصصة
       try {
-        const shippingResponse = await getShippingInvoice(id);
-        shippingData = shippingResponse.data?.invoices || [];
-        console.log('Shipping data loaded:', shippingData); // للتأكد من البيانات
+        const shippingResponse = await getShippingInvoicesByOrderId(id);
+        const shippingData = shippingResponse.data || [];
+        setShippingInvoices(shippingData);
       } catch (shippingError) {
-        console.error('Failed to load shipping data:', shippingError);
+        console.error('Error loading shipping data:', shippingError);
+        toast({
+          title: "Warning",
+          description: "Could not load shipping information",
+          variant: "destructive",
+        });
+        setShippingInvoices([]); // Reset shipping invoices in case of error
       }
       
-      // 4. تحديث الحالة مرة واحدة بجميع البيانات
+      // 5. تحديث حالة الطلب
       setOrder(order);
-      setPurchaseOrders(purchaseOrders);
-      setInvoices(allInvoices);
-      setShippingInvoices(shippingData); // استخدم shippingData بدلاً من shippingInvoices
-
+      
     } catch (error) {
       console.error('Error fetching order details:', error);
       toast({
         title: "Error",
-        description: error.message || "Failed to load order details",
+        description: error instanceof Error ? error.message : "Failed to load order details",
         variant: "destructive",
       });
     } finally {
@@ -112,12 +119,14 @@ useEffect(() => {
   };
 
   fetchOrderData();
-}, [id, toast]);
+}, [id, toast, setInvoices]);
+
 
 
 useEffect(() => {
-console.log("shippingInvoices", shippingInvoices)
+console.log(`ShippingInvoices`, shippingInvoices)
 }, [shippingInvoices])
+
 
 
 //handle editing shipping
